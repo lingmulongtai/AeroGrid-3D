@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Activity, Radio, AlertCircle } from 'lucide-react';
+import { Activity, Radio, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import type { FlightStats } from '../hooks/useFlightData';
 
 interface TopBarProps {
   flightStats: FlightStats;
   satelliteCount: number;
+  wsConnected?: boolean;
 }
 
 function utcClock(): string {
@@ -26,7 +27,7 @@ function formatKts(ms: number): string {
   return `${Math.round(ms * 1.94384)} kt`;
 }
 
-export function TopBar({ flightStats, satelliteCount }: TopBarProps) {
+export function TopBar({ flightStats, satelliteCount, wsConnected }: TopBarProps) {
   const [clock, setClock] = useState(utcClock);
 
   useEffect(() => {
@@ -102,7 +103,18 @@ export function TopBar({ flightStats, satelliteCount }: TopBarProps) {
           </div>
         )}
 
-        {/* Connection status */}
+        {/* WebSocket server indicator — only shown when server is wired up */}
+        {wsConnected !== undefined && (
+          <div className={`flex items-center gap-1 text-xs ${wsConnected ? 'text-cyan-400' : 'text-neutral-500'}`}
+               title={wsConnected ? 'Connected to AeroGrid server (WebSocket)' : 'Using direct API (no server)'}>
+            {wsConnected
+              ? <Wifi className="w-3 h-3" />
+              : <WifiOff className="w-3 h-3" />}
+            <span className="font-mono">{wsConnected ? 'WS' : 'HTTP'}</span>
+          </div>
+        )}
+
+        {/* Data freshness status */}
         <div className="flex items-center gap-1.5">
           {isLive ? (
             <>
