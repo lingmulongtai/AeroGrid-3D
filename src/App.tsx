@@ -7,9 +7,8 @@ import { TopBar } from './components/TopBar';
 import { SearchBar } from './components/SearchBar';
 import { FlightInfoPanel, type SelectedObject } from './components/FlightInfoPanel';
 
-import { useFlightData } from './hooks/useFlightData';
 import { useSatelliteData, type SatelliteGroup } from './hooks/useSatelliteData';
-import { useWeatherData } from './hooks/useWeatherData';
+import { useServerData } from './hooks/useServerData';
 
 import type { Flight } from './hooks/useFlightData';
 import type { SatelliteInfo } from './hooks/useSatelliteData';
@@ -42,9 +41,10 @@ export default function App() {
   const [trackedObject, setTrackedObject] = useState<SelectedObject>(null);
 
   // Data hooks (lifted out of Map so TopBar/SearchBar/Sidebar can share)
-  const { flights, stats: flightStats } = useFlightData(showFlights, !hideOnGround);
+  const { flights, flightStats, radarTileUrl, wsConnected } = useServerData(
+    showFlights, showWeather, !hideOnGround,
+  );
   const { satellites, groupCounts } = useSatelliteData(showSatellites, activeGroups);
-  const { radarTileUrl } = useWeatherData(showWeather);
 
   function handleFlightClick(f: Flight) {
     setSelectedObject({ type: 'flight', data: f });
@@ -98,6 +98,7 @@ export default function App() {
       <TopBar
         flightStats={flightStats}
         satelliteCount={satellites.length}
+        wsConnected={wsConnected}
       />
 
       {/* Search bar — centered below top bar */}

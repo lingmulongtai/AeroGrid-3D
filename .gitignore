@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# SQLite database (server writes to data/)
+data/*.db
+data/*.db-shm
+data/*.db-wal
