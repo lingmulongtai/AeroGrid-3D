@@ -1,0 +1,45 @@
+# Production-grade database stack for AeroGrid-3D.
+# Run: docker compose up -d
+#
+# This replaces the embedded SQLite (server/db.ts) with:
+#   • TimescaleDB  — PostgreSQL with time-series compression for flight history
+#   • Redis        — in-memory cache for latest flight state (instant client connect)
+#
+# See SETUP.md for migration instructions.
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     aerogrid
+      POSTGRES_PASSWORD: aerogrid_password   # change in production
+      POSTGRES_DB:       aerogrid
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./server/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aerogrid"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  timescale_data:
+  redis_data:
