@@ -138,8 +138,8 @@ export default function EarthMap({
   );
 
   const weatherParticles = useMemo(
-    () => createWeatherParticles(quality.weatherParticles, Math.round(viewState.longitude * 10 + viewState.latitude * 3 + 99)),
-    [quality.weatherParticles, viewState.latitude, viewState.longitude],
+    () => createWeatherParticles(quality.weatherParticles, 4242),
+    [quality.weatherParticles],
   );
 
   const view = useMemo(
@@ -162,7 +162,7 @@ export default function EarthMap({
     }
 
     if (layers.airports) {
-      list.push(...createAirportLayers(DEMO_AIRPORTS, layers.labels, () => {}));
+      list.push(...createAirportLayers(DEMO_AIRPORTS, layers.labels));
     }
 
     if (layers.flights) {
@@ -246,7 +246,7 @@ export default function EarthMap({
         .filter(Boolean) as [number, number][];
       if (points.length >= 3) onCameraFootprintChange(points);
     } catch {
-      // no-op
+      // Footprint projection can transiently fail during rapid globe transitions.
     }
   }
 
@@ -286,21 +286,13 @@ export default function EarthMap({
         controller={{ inertia: true, dragRotate: true, doubleClickZoom: false }}
         onViewStateChange={({ viewState: vs }: any) => {
           setViewState(vs);
-          setTimeout(calcFootprint, 0);
         }}
         onDragStart={cameraHandlers.onDragStart}
         onDrag={cameraHandlers.onDrag}
         onDragEnd={cameraHandlers.onDragEnd}
-        onWheel={cameraHandlers.onWheel}
         layers={layersList}
         effects={[lighting]}
         getTooltip={getTooltip as any}
-        parameters={{
-          cull: false,
-          depthTest: true,
-          blend: true,
-          antialias: true,
-        }}
         onAfterRender={calcFootprint}
         onClick={({ object }: any) => {
           if (!object) return;

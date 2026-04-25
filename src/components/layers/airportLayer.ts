@@ -4,7 +4,6 @@ import type { Airport } from '../../data/airports';
 export function createAirportLayers(
   airports: Airport[],
   showLabels: boolean,
-  onAirportClick: (a: Airport) => void,
 ) {
   const layers: any[] = [
     new ScatterplotLayer<Airport>({
@@ -15,8 +14,7 @@ export function createAirportLayers(
       getRadius: 6000,
       radiusMinPixels: 3,
       radiusMaxPixels: 10,
-      pickable: true,
-      onClick: ({ object }: any) => object && onAirportClick(object),
+      pickable: false,
       stroked: true,
       lineWidthMinPixels: 1,
       getLineColor: [255, 255, 255, 100],

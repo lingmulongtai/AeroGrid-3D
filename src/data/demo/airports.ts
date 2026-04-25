@@ -10,7 +10,7 @@ const EXTRA_AIRPORTS: Airport[] = [
   { iata: 'PER', name: 'Perth Airport', city: 'Perth', country: 'Australia', latitude: -31.9403, longitude: 115.9672 },
   { iata: 'CPT', name: 'Cape Town International', city: 'Cape Town', country: 'South Africa', latitude: -33.9696, longitude: 18.5975 },
   { iata: 'ADD', name: 'Addis Ababa Bole International', city: 'Addis Ababa', country: 'Ethiopia', latitude: 8.9779, longitude: 38.7993 },
-  { iata: 'ICN2', name: 'Incheon Cargo Terminal Demo', city: 'Seoul', country: 'South Korea', latitude: 37.4450, longitude: 126.4500 },
+  { iata: 'CJU', name: 'Jeju International', city: 'Jeju', country: 'South Korea', latitude: 33.5113, longitude: 126.4930 },
 ];
 
 export const DEMO_AIRPORTS: Airport[] = [...MAJOR_AIRPORTS, ...EXTRA_AIRPORTS];
