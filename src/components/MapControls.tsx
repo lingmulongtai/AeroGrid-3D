@@ -1,11 +1,9 @@
-import { Plus, Minus, Home, Globe, Map, Sun, Moon } from 'lucide-react';
+import { Plus, Minus, Home, Sun, Moon } from 'lucide-react';
 
 interface MapControlsProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetView: () => void;
-  projection: 'globe' | 'map';
-  onToggleProjection: () => void;
   nightMode: boolean;
   onToggleNight: () => void;
 }
@@ -14,14 +12,11 @@ export function MapControls({
   onZoomIn,
   onZoomOut,
   onResetView,
-  projection,
-  onToggleProjection,
   nightMode,
   onToggleNight,
 }: MapControlsProps) {
   return (
     <div className="absolute bottom-8 right-5 z-20 flex flex-col gap-2">
-      {/* Night mode */}
       <ControlButton
         onClick={onToggleNight}
         active={nightMode}
@@ -30,29 +25,16 @@ export function MapControls({
         {nightMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
       </ControlButton>
 
-      {/* Projection toggle */}
-      <ControlButton
-        onClick={onToggleProjection}
-        active={false}
-        title={projection === 'globe' ? 'Switch to flat map' : 'Switch to globe'}
-      >
-        {projection === 'globe' ? <Map className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
-      </ControlButton>
-
-      {/* Divider */}
       <div className="h-px bg-white/10 mx-1" />
 
-      {/* Zoom in */}
       <ControlButton onClick={onZoomIn} active={false} title="Zoom in">
         <Plus className="w-4 h-4" />
       </ControlButton>
 
-      {/* Zoom out */}
       <ControlButton onClick={onZoomOut} active={false} title="Zoom out">
         <Minus className="w-4 h-4" />
       </ControlButton>
 
-      {/* Reset */}
       <ControlButton onClick={onResetView} active={false} title="Reset view">
         <Home className="w-4 h-4" />
       </ControlButton>

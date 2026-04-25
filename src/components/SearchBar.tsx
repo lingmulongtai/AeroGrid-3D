@@ -72,7 +72,7 @@ export function SearchBar({ flights, satellites, onSelect }: SearchBarProps) {
   }, []);
 
   return (
-    <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 w-80">
+    <div className="absolute top-0 left-1/2 -translate-x-1/2 z-30 w-[26rem] pt-1">
       {/* Input */}
       <div
         className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/10 shadow-lg"
@@ -86,7 +86,7 @@ export function SearchBar({ flights, satellites, onSelect }: SearchBarProps) {
           onChange={e => handleChange(e.target.value)}
           onFocus={() => query.trim().length >= 2 && setOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder="Search callsign or ICAO..."
+          placeholder="Search callsign, ICAO, satellite..."
           className="flex-1 bg-transparent text-white text-sm placeholder-neutral-600 outline-none"
         />
         {query && (
