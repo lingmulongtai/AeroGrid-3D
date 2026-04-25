@@ -72,7 +72,7 @@ export function Sidebar({
       initial={{ x: -320, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ duration: 0.4, ease: 'easeOut' }}
-      className="absolute top-4 left-4 w-76 z-20 rounded-2xl border border-white/8 flex flex-col overflow-hidden"
+      className="absolute top-4 left-4 w-72 z-20 rounded-2xl border border-white/8 flex flex-col overflow-hidden"
       style={{
         background: 'rgba(6,6,10,0.92)',
         backdropFilter: 'blur(20px)',
@@ -271,7 +271,7 @@ function LayerToggle({ active, onToggle, icon, label }: {
       <span className="w-7 h-7 rounded-lg border border-white/10 flex items-center justify-center">{icon}</span>
       <span className="text-sm flex-1 text-left">{label}</span>
       <span className={`w-9 h-5 rounded-full ${active ? 'bg-cyan-500' : 'bg-neutral-800'} relative`}>
-        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${active ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${active ? 'translate-x-4' : 'translate-x-0.5'}`} />
       </span>
     </button>
   );

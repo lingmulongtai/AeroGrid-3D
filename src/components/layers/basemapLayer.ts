@@ -25,7 +25,7 @@ export function createBasemapLayer(mapStyle: MapStyle, quality: QualitySettings)
     id: 'basemap',
     data: tileUrls,
     minZoom: 0,
-    maxZoom: 9,
+    maxZoom: mapStyle === 'night' ? 8 : 9,
     tileSize: 256,
     maxCacheSize: Math.round(120 * quality.tileCacheScale),
     maxRequests: 16,

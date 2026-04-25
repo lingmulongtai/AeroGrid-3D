@@ -4,9 +4,12 @@ import { _GlobeView as GlobeView } from '@deck.gl/core';
 import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
 
 interface MinimapProps {
-  mainViewState: any;
+  mainViewState: { longitude: number; latitude: number; zoom: number; pitch: number; bearing: number };
   cameraFootprint: [number, number][];
 }
+
+type MiniCenter = { lon: number; lat: number };
+type MiniPath = { path: [number, number][] };
 
 export function Minimap({ mainViewState, cameraFootprint }: MinimapProps) {
   const miniState = useMemo(
@@ -27,7 +30,7 @@ export function Minimap({ mainViewState, cameraFootprint }: MinimapProps) {
       new ScatterplotLayer({
         id: 'mini-center',
         data: [{ lon: mainViewState.longitude, lat: mainViewState.latitude }],
-        getPosition: (d: any) => [d.lon, d.lat, 0],
+        getPosition: (d: MiniCenter) => [d.lon, d.lat, 0],
         getFillColor: [0, 220, 255, 220],
         getRadius: 140000,
         radiusMinPixels: 3,
@@ -35,7 +38,7 @@ export function Minimap({ mainViewState, cameraFootprint }: MinimapProps) {
       new PathLayer({
         id: 'mini-indicator',
         data: path.length > 2 ? [{ path }] : [],
-        getPath: (d: any) => d.path,
+        getPath: (d: MiniPath) => d.path,
         getColor: [0, 220, 255, 220],
         getWidth: 2,
         widthUnits: 'pixels',

@@ -19,6 +19,7 @@ import { DEFAULT_QUALITY, QUALITY_PRESETS, type QualityPreset, type QualitySetti
 import { type MapStyle } from './components/layers/basemapLayer';
 
 export default function App() {
+  const INCLUDE_ON_GROUND_FLIGHTS = true;
   const [layers, setLayers] = useState<LayerVisibility>(DEFAULT_LAYERS);
   const [activeGroups, setActiveGroups] = useState<Set<SatelliteGroup>>(
     new Set(['stations', 'starlink', 'weather', 'gps', 'active']),
@@ -44,7 +45,7 @@ export default function App() {
   const { flights, flightStats, radarTileUrl, wsConnected } = useServerData(
     layers.flights,
     layers.weather,
-    true,
+    INCLUDE_ON_GROUND_FLIGHTS,
   );
   const { satellites, groupCounts } = useSatelliteData(layers.satellites, activeGroups);
 
