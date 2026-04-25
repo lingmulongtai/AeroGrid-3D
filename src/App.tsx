@@ -1,50 +1,67 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 
-import EarthMap, { type ColorMode, type MapStyle, type ProjectionMode } from './components/Map';
+import EarthMap, { type ColorMode } from './components/Map';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { SearchBar } from './components/SearchBar';
 import { FlightInfoPanel, type SelectedObject } from './components/FlightInfoPanel';
+import { SettingsModal } from './components/ui/SettingsModal';
+import { Minimap } from './components/ui/Minimap';
 
 import { useSatelliteData, type SatelliteGroup } from './hooks/useSatelliteData';
 import { useServerData } from './hooks/useServerData';
 
 import type { Flight } from './hooks/useFlightData';
 import type { SatelliteInfo } from './hooks/useSatelliteData';
-import type { Airport } from './data/airports';
+import { DEFAULT_LAYERS, type LayerKey, type LayerVisibility } from './types/layers';
+import { DEFAULT_QUALITY, QUALITY_PRESETS, type QualityPreset, type QualitySettings } from './types/quality';
+import { type MapStyle } from './components/layers/basemapLayer';
 
 export default function App() {
-  // Layer visibility
-  const [showFlights, setShowFlights] = useState(true);
-  const [showSatellites, setShowSatellites] = useState(true);
-  const [showWeather, setShowWeather] = useState(true);
-  const [showAirports, setShowAirports] = useState(false);
-
-  // Sub-toggles
-  const [showTrails, setShowTrails] = useState(false);
-  const [showLabels, setShowLabels] = useState(false);
-  const [hideOnGround, setHideOnGround] = useState(true);
-
-  // Satellite groups
+  const INCLUDE_ON_GROUND_FLIGHTS = true;
+  const [layers, setLayers] = useState<LayerVisibility>(DEFAULT_LAYERS);
   const [activeGroups, setActiveGroups] = useState<Set<SatelliteGroup>>(
-    new Set(['stations', 'starlink', 'weather', 'gps', 'active'])
+    new Set(['stations', 'starlink', 'weather', 'gps', 'active']),
   );
-
-  // Visual / display modes
   const [colorMode, setColorMode] = useState<ColorMode>('altitude');
   const [mapStyle, setMapStyle] = useState<MapStyle>('dark');
-  const [projection, setProjection] = useState<ProjectionMode>('globe');
 
-  // Selection and tracking
+  const [quality, setQuality] = useState<QualitySettings>(DEFAULT_QUALITY);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
+
   const [selectedObject, setSelectedObject] = useState<SelectedObject>(null);
   const [trackedObject, setTrackedObject] = useState<SelectedObject>(null);
+  const [cameraFootprint, setCameraFootprint] = useState<[number, number][]>([]);
+  const [mainViewState, setMainViewState] = useState({
+    longitude: 139,
+    latitude: 35,
+    zoom: 1.25,
+    pitch: 10,
+    bearing: 0,
+  });
 
-  // Data hooks (lifted out of Map so TopBar/SearchBar/Sidebar can share)
   const { flights, flightStats, radarTileUrl, wsConnected } = useServerData(
-    showFlights, showWeather, !hideOnGround,
+    layers.flights,
+    layers.weather,
+    INCLUDE_ON_GROUND_FLIGHTS,
   );
-  const { satellites, groupCounts } = useSatelliteData(showSatellites, activeGroups);
+  const { satellites, groupCounts } = useSatelliteData(layers.satellites, activeGroups);
+
+  useEffect(() => {
+    const onFull = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onFull);
+    return () => document.removeEventListener('fullscreenchange', onFull);
+  }, []);
+
+  function applyPreset(preset: QualityPreset) {
+    setQuality(QUALITY_PRESETS[preset]);
+  }
+
+  function toggleLayer(key: LayerKey) {
+    setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   function handleFlightClick(f: Flight) {
     setSelectedObject({ type: 'flight', data: f });
@@ -56,52 +73,43 @@ export default function App() {
     setTrackedObject(null);
   }
 
-  function handleAirportClick(a: Airport) {
-    setSelectedObject({ type: 'airport', data: a });
-    setTrackedObject(null);
-  }
-
   function handleTrack(obj: SelectedObject) {
     setTrackedObject(obj);
   }
 
-  function handleClosePanel() {
-    setSelectedObject(null);
+  async function handleToggleFullscreen() {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen?.();
+    } else {
+      await document.documentElement.requestFullscreen?.();
+    }
   }
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-black font-sans selection:bg-cyan-500/30">
-      {/* 3D Globe */}
       <EarthMap
-        showFlights={showFlights}
-        showSatellites={showSatellites}
-        showWeather={showWeather}
-        showAirports={showAirports}
-        showTrails={showTrails}
-        showLabels={showLabels}
+        layers={layers}
         colorMode={colorMode}
         mapStyle={mapStyle}
-        projection={projection}
-        onProjectionChange={setProjection}
         flights={flights}
         satellites={satellites}
         activeGroups={activeGroups}
         radarTileUrl={radarTileUrl}
         selectedObject={selectedObject}
         trackedObject={trackedObject}
+        quality={quality}
         onFlightClick={handleFlightClick}
         onSatelliteClick={handleSatelliteClick}
-        onAirportClick={handleAirportClick}
+        onCameraFootprintChange={setCameraFootprint}
+        onMainViewStateChange={setMainViewState}
       />
 
-      {/* Top HUD bar */}
       <TopBar
         flightStats={flightStats}
         satelliteCount={satellites.length}
         wsConnected={wsConnected}
       />
 
-      {/* Search bar — centered below top bar */}
       <SearchBar
         flights={flights}
         satellites={satellites}
@@ -111,42 +119,44 @@ export default function App() {
         }}
       />
 
-      {/* Left sidebar */}
       <Sidebar
-        showFlights={showFlights}
-        setShowFlights={setShowFlights}
-        showSatellites={showSatellites}
-        setShowSatellites={setShowSatellites}
-        showWeather={showWeather}
-        setShowWeather={setShowWeather}
-        showAirports={showAirports}
-        setShowAirports={setShowAirports}
-        showTrails={showTrails}
-        setShowTrails={setShowTrails}
-        showLabels={showLabels}
-        setShowLabels={setShowLabels}
-        hideOnGround={hideOnGround}
-        setHideOnGround={setHideOnGround}
+        layers={layers}
+        onToggleLayer={toggleLayer}
         activeGroups={activeGroups}
         setActiveGroups={setActiveGroups}
         colorMode={colorMode}
         setColorMode={setColorMode}
         mapStyle={mapStyle}
         setMapStyle={setMapStyle}
+        qualityPreset={quality.preset}
+        onOpenSettings={() => setSettingsOpen(true)}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={handleToggleFullscreen}
         flightStats={flightStats}
         satelliteCounts={groupCounts}
       />
 
-      {/* Right panel — selected object info */}
       <AnimatePresence>
         {selectedObject && (
           <FlightInfoPanel
             selected={selectedObject}
-            onClose={handleClosePanel}
+            onClose={() => setSelectedObject(null)}
             onTrack={handleTrack}
           />
         )}
       </AnimatePresence>
+
+      <Minimap
+        mainViewState={mainViewState}
+        cameraFootprint={cameraFootprint}
+      />
+
+      <SettingsModal
+        open={settingsOpen}
+        quality={quality}
+        onApplyPreset={applyPreset}
+        onClose={() => setSettingsOpen(false)}
+      />
     </div>
   );
 }
