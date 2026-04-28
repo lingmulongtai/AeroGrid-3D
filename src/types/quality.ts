@@ -40,4 +40,4 @@ export const QUALITY_PRESETS: Record<QualityPreset, QualitySettings> = {
   },
 };
 
-export const DEFAULT_QUALITY = QUALITY_PRESETS.high;
+export const DEFAULT_QUALITY = QUALITY_PRESETS.medium;

@@ -32,5 +32,17 @@ export default defineConfig(({mode}) => {
         },
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined;
+            if (id.includes('deck.gl') || id.includes('@deck.gl')) return 'deckgl';
+            if (id.includes('maplibre-gl') || id.includes('react-map-gl')) return 'map';
+            return 'vendor';
+          },
+        },
+      },
+    },
   };
 });
