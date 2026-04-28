@@ -22,12 +22,12 @@ export const QUALITY_PRESETS: Record<QualityPreset, QualitySettings> = {
   },
   medium: {
     preset: 'medium',
-    dpr: 1.5,
+    dpr: 1.8,
     maxFlights: 1600,
     maxSatellites: 900,
     weatherParticles: 6000,
-    globeResolution: 2,
-    tileCacheScale: 1.0,
+    globeResolution: 1,
+    tileCacheScale: 1.2,
   },
   high: {
     preset: 'high',
