@@ -4,31 +4,49 @@ import type { QualitySettings } from '../../types/quality';
 
 export type MapStyle = 'dark' | 'satellite' | 'night';
 
-export const TILE_URLS: Record<MapStyle, string[]> = {
-  dark: [
-    'https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png',
-    'https://b.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png',
-    'https://c.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png',
-  ],
-  satellite: [
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  ],
-  night: [
-    'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_CityLights_2012/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpg',
-  ],
+type TileConfig = {
+  urls: string[];
+  maxZoom: number;
+};
+
+export const TILE_CONFIGS: Record<MapStyle, TileConfig> = {
+  dark: {
+    urls: [
+      'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+      'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+      'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+    ],
+    maxZoom: 20,
+  },
+  satellite: {
+    urls: [
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    ],
+    maxZoom: 19,
+  },
+  // NASA city-lights tiles have a low zoom cap and often trigger "zoom level not supported"
+  // at close zooms. Use a high-zoom dark style here for stable UX.
+  night: {
+    urls: [
+      'https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
+      'https://b.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
+      'https://c.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
+    ],
+    maxZoom: 20,
+  },
 };
 
 export function createBasemapLayer(mapStyle: MapStyle, quality: QualitySettings) {
-  const tileUrls = TILE_URLS[mapStyle] ?? TILE_URLS.dark;
+  const cfg = TILE_CONFIGS[mapStyle] ?? TILE_CONFIGS.dark;
 
   return new TileLayer({
     id: 'basemap',
-    data: tileUrls,
+    data: cfg.urls,
     minZoom: 0,
-    maxZoom: mapStyle === 'night' ? 8 : 9,
+    maxZoom: cfg.maxZoom,
     tileSize: 256,
-    maxCacheSize: Math.round(120 * quality.tileCacheScale),
-    maxRequests: 16,
+    maxCacheSize: Math.round(220 * quality.tileCacheScale),
+    maxRequests: 24,
     refinementStrategy: 'best-available',
     extent: [-180, -85, 180, 85],
     renderSubLayers: (props: any) => {
