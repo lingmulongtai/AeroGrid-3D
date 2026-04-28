@@ -71,6 +71,21 @@ interface FlightRow {
   onGround: boolean;
 }
 
+export interface FlightSnapshotRow {
+  id: number;
+  icao24: string;
+  callsign: string | null;
+  country: string | null;
+  latitude: number;
+  longitude: number;
+  altitude: number | null;
+  velocity: number | null;
+  heading: number | null;
+  vertical_rate: number | null;
+  on_ground: number;
+  captured_at: number;
+}
+
 export function saveFlightSnapshot(flights: FlightRow[]): void {
   if (!db || flights.length === 0) return;
   const now = Math.floor(Date.now() / 1000);
@@ -99,11 +114,11 @@ export function saveFlightSnapshot(flights: FlightRow[]): void {
   }
 }
 
-export function getRecentFlights(icao24: string, limit = 200): unknown[] {
+export function getRecentFlights(icao24: string, limit = 200): FlightSnapshotRow[] {
   if (!db) return [];
   return db.prepare(
     'SELECT * FROM flight_snapshots WHERE icao24 = ? ORDER BY captured_at DESC LIMIT ?',
-  ).all(icao24, limit);
+  ).all(icao24, limit) as FlightSnapshotRow[];
 }
 
 export function pruneOldData(daysToKeep = 7): void {
