@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 
 import EarthMap, { type ColorMode } from './components/Map';
@@ -8,6 +8,7 @@ import { SearchBar } from './components/SearchBar';
 import { FlightInfoPanel, type SelectedObject } from './components/FlightInfoPanel';
 import { SettingsModal } from './components/ui/SettingsModal';
 import { Minimap } from './components/ui/Minimap';
+import { type GlobeViewState } from './components/camera/useAdvancedGlobeCamera';
 
 import { useSatelliteData, type SatelliteGroup } from './hooks/useSatelliteData';
 import { useServerData } from './hooks/useServerData';
@@ -48,6 +49,8 @@ export default function App() {
     INCLUDE_ON_GROUND_FLIGHTS,
   );
   const { satellites, groupCounts } = useSatelliteData(layers.satellites, activeGroups);
+  const lastMiniUpdateRef = useRef(0);
+  const lastFootprintRef = useRef('');
 
   useEffect(() => {
     const onFull = () => setIsFullscreen(Boolean(document.fullscreenElement));
@@ -77,6 +80,29 @@ export default function App() {
     setTrackedObject(obj);
   }
 
+  const handleMainViewStateChange = useCallback((vs: GlobeViewState) => {
+    const now = Date.now();
+    if (now - lastMiniUpdateRef.current < 120) return;
+    lastMiniUpdateRef.current = now;
+    setMainViewState((prev) => {
+      const closeEnough = Math.abs(prev.longitude - vs.longitude) < 0.08
+        && Math.abs(prev.latitude - vs.latitude) < 0.08
+        && Math.abs(prev.zoom - vs.zoom) < 0.04
+        && Math.abs(prev.pitch - vs.pitch) < 1
+        && Math.abs(prev.bearing - vs.bearing) < 1;
+      return closeEnough ? prev : vs;
+    });
+  }, []);
+
+  const handleCameraFootprintChange = useCallback((points: [number, number][]) => {
+    const serialized = points
+      .map(([lon, lat]) => `${lon.toFixed(2)},${lat.toFixed(2)}`)
+      .join('|');
+    if (serialized === lastFootprintRef.current) return;
+    lastFootprintRef.current = serialized;
+    setCameraFootprint(points);
+  }, []);
+
   async function handleToggleFullscreen() {
     if (document.fullscreenElement) {
       await document.exitFullscreen?.();
@@ -100,8 +126,8 @@ export default function App() {
         quality={quality}
         onFlightClick={handleFlightClick}
         onSatelliteClick={handleSatelliteClick}
-        onCameraFootprintChange={setCameraFootprint}
-        onMainViewStateChange={setMainViewState}
+        onCameraFootprintChange={handleCameraFootprintChange}
+        onMainViewStateChange={handleMainViewStateChange}
       />
 
       <TopBar
@@ -149,6 +175,7 @@ export default function App() {
       <Minimap
         mainViewState={mainViewState}
         cameraFootprint={cameraFootprint}
+        mapStyle={mapStyle}
       />
 
       <SettingsModal
