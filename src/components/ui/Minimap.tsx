@@ -1,17 +1,29 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import DeckGL from '@deck.gl/react';
 import { _GlobeView as GlobeView } from '@deck.gl/core';
 import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
+import { createBasemapLayer, type MapStyle } from '../layers/basemapLayer';
+import type { QualitySettings } from '../../types/quality';
 
 interface MinimapProps {
   mainViewState: { longitude: number; latitude: number; zoom: number; pitch: number; bearing: number };
   cameraFootprint: [number, number][];
+  mapStyle: MapStyle;
 }
 
 type MiniCenter = { lon: number; lat: number };
 type MiniPath = { path: [number, number][] };
+const MINI_QUALITY: QualitySettings = {
+  preset: 'low',
+  dpr: 1,
+  maxFlights: 0,
+  maxSatellites: 0,
+  weatherParticles: 0,
+  globeResolution: 4,
+  tileCacheScale: 0.5,
+};
 
-export function Minimap({ mainViewState, cameraFootprint }: MinimapProps) {
+export const Minimap = memo(function Minimap({ mainViewState, cameraFootprint, mapStyle }: MinimapProps) {
   const miniState = useMemo(
     () => ({
       longitude: mainViewState.longitude,
@@ -27,6 +39,7 @@ export function Minimap({ mainViewState, cameraFootprint }: MinimapProps) {
     const path = cameraFootprint.length > 2 ? [...cameraFootprint, cameraFootprint[0]] : cameraFootprint;
 
     return [
+      createBasemapLayer(mapStyle, MINI_QUALITY),
       new ScatterplotLayer({
         id: 'mini-center',
         data: [{ lon: mainViewState.longitude, lat: mainViewState.latitude }],
@@ -44,10 +57,13 @@ export function Minimap({ mainViewState, cameraFootprint }: MinimapProps) {
         widthUnits: 'pixels',
       }),
     ];
-  }, [cameraFootprint, mainViewState.latitude, mainViewState.longitude]);
+  }, [cameraFootprint, mainViewState.latitude, mainViewState.longitude, mapStyle]);
 
   return (
-    <div className="absolute right-4 bottom-4 w-52 h-52 rounded-full overflow-hidden border border-cyan-400/40 z-30 shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+    <div
+      className="absolute right-4 bottom-4 w-52 h-52 rounded-full overflow-hidden border border-cyan-400/40 z-30 shadow-[0_0_30px_rgba(0,0,0,0.5)]"
+      style={{ background: 'radial-gradient(circle at 30% 20%, #153b62 0%, #071628 55%, #03060d 100%)' }}
+    >
       <DeckGL
         views={new GlobeView({ id: 'mini', resolution: 4 })}
         viewState={miniState}
@@ -57,4 +73,4 @@ export function Minimap({ mainViewState, cameraFootprint }: MinimapProps) {
       />
     </div>
   );
-}
+});
