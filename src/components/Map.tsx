@@ -86,6 +86,7 @@ export default function EarthMap({
   const [nightLighting, setNightLighting] = useState(false);
   const [pulseAlpha, setPulseAlpha] = useState(220);
   const satTrailsRef = useRef<Map<string, [number, number, number][]>>(new Map());
+  const footprintLastCalcAt = useRef(0);
 
   const cameraHandlers = useAdvancedGlobeCamera(viewState, setViewState);
 
@@ -230,6 +231,10 @@ export default function EarthMap({
   ]);
 
   function calcFootprint() {
+    const now = performance.now();
+    if (now - footprintLastCalcAt.current < 180) return;
+    footprintLastCalcAt.current = now;
+
     const vp = deckRef.current?.deck?.getViewports?.()?.[0];
     const w = wrapperRef.current?.clientWidth ?? 0;
     const h = wrapperRef.current?.clientHeight ?? 0;

@@ -73,6 +73,7 @@ export function Sidebar({
       animate={{ x: 0, opacity: 1 }}
       transition={{ duration: 0.4, ease: 'easeOut' }}
       className="absolute top-4 left-4 w-72 z-20 rounded-2xl border border-white/8 flex flex-col overflow-hidden"
+      onPointerDown={(e) => e.stopPropagation()}
       style={{
         background: 'rgba(6,6,10,0.92)',
         backdropFilter: 'blur(20px)',
@@ -92,6 +93,7 @@ export function Sidebar({
         </div>
 
         <button
+          type="button"
           className="p-1.5 rounded-lg hover:bg-white/10 text-neutral-400 hover:text-white"
           onClick={() => setCollapsed((v) => !v)}
           title={collapsed ? 'Expand panel' : 'Collapse up'}
@@ -147,6 +149,7 @@ export function Sidebar({
 
             <div className="px-4 pb-3 border-t border-white/5 pt-3">
               <button
+                type="button"
                 className="w-full text-left text-[10px] uppercase tracking-wider text-neutral-500 mb-2 flex items-center justify-between"
                 onClick={() => setSatsExpanded((v) => !v)}
               >
@@ -161,6 +164,7 @@ export function Sidebar({
                     const isActive = activeGroups.has(g.id);
                     return (
                       <button
+                        type="button"
                         key={g.id}
                         onClick={() => g.id !== 'stations' && toggleGroup(g.id)}
                         disabled={g.id === 'stations'}
@@ -186,6 +190,7 @@ export function Sidebar({
               <div className="flex gap-1">
                 {(['altitude', 'speed', 'category'] as ColorMode[]).map((mode) => (
                   <button
+                    type="button"
                     key={mode}
                     onClick={() => setColorMode(mode)}
                     className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${
@@ -210,6 +215,7 @@ export function Sidebar({
                   ['night', 'Earth at Night'],
                 ] as [MapStyle, string][]).map(([style, label]) => (
                   <button
+                    type="button"
                     key={style}
                     onClick={() => setMapStyle(style)}
                     className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${
@@ -224,6 +230,7 @@ export function Sidebar({
 
             <div className="p-3 border-t border-white/5 grid grid-cols-2 gap-2">
               <button
+                type="button"
                 className="flex items-center justify-center gap-1.5 py-2 rounded-xl border border-white/8 bg-white/3 text-neutral-300 hover:bg-white/8 text-xs"
                 onClick={onOpenSettings}
               >
@@ -231,6 +238,7 @@ export function Sidebar({
                 Settings
               </button>
               <button
+                type="button"
                 className="flex items-center justify-center gap-1.5 py-2 rounded-xl border border-white/8 bg-white/3 text-neutral-300 hover:bg-white/8 text-xs"
                 onClick={onToggleFullscreen}
               >
@@ -265,6 +273,7 @@ function LayerToggle({ active, onToggle, icon, label }: {
 }) {
   return (
     <button
+      type="button"
       className={`w-full flex items-center gap-2 px-2 py-2 rounded-xl border ${active ? 'bg-white/6 border-white/10 text-white' : 'border-transparent text-neutral-500 hover:bg-white/5'}`}
       onClick={onToggle}
     >
@@ -284,6 +293,7 @@ function SubOption({ label, checked, onChange }: {
 }) {
   return (
     <button
+      type="button"
       onClick={onChange}
       className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs hover:bg-white/5"
     >
