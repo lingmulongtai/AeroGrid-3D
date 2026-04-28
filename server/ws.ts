@@ -15,11 +15,14 @@ export function initWss(server: Server): WebSocketServer {
     if (lastFlightMsg) ws.send(lastFlightMsg);
     if (lastWeatherMsg) ws.send(lastWeatherMsg);
 
-    ws.on('message', (raw) => {
+    ws.on('message', (raw, isBinary) => {
+      if (isBinary) return;
       try {
-        const msg = JSON.parse(raw.toString());
+        const msg = JSON.parse(String(raw)) as { type?: string };
         if (msg.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }));
-      } catch {}
+      } catch (err) {
+        console.debug('[ws] Ignoring invalid client message:', (err as Error).message);
+      }
     });
 
     ws.on('error', () => ws.terminate());
