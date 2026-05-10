@@ -43,7 +43,7 @@ export function TopBar({ flightStats, satelliteCount, wsConnected }: TopBarProps
       initial={{ y: -56, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5, ease: 'easeOut' }}
-      className="absolute top-0 left-0 right-0 h-14 z-20 flex items-center px-4 gap-6 pointer-events-none"
+      className="absolute top-0 left-0 right-0 z-20 flex min-h-14 flex-wrap items-center gap-2 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] pointer-events-none sm:h-14 sm:flex-nowrap sm:gap-6 sm:px-4 sm:py-0"
       style={{
         background: 'linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%, transparent 100%)',
       }}
@@ -59,7 +59,7 @@ export function TopBar({ flightStats, satelliteCount, wsConnected }: TopBarProps
       </div>
 
       {/* Stats */}
-      <div className="flex items-center gap-3 flex-1">
+      <div className="order-3 flex w-full items-center gap-2 overflow-x-auto mobile-chip-scroll sm:order-none sm:w-auto sm:flex-1 sm:gap-3">
         {flightStats.total > 0 && (
           <>
             <StatChip
@@ -95,9 +95,9 @@ export function TopBar({ flightStats, satelliteCount, wsConnected }: TopBarProps
       </div>
 
       {/* Clock + status */}
-      <div className="flex items-center gap-3 pointer-events-auto flex-shrink-0">
+      <div className="ml-auto flex items-center gap-2 pointer-events-auto flex-shrink-0 sm:gap-3">
         {isRateLimited && (
-          <div className="flex items-center gap-1.5 text-amber-400 text-xs">
+          <div className="hidden items-center gap-1.5 text-amber-400 text-xs sm:flex">
             <AlertCircle className="w-3.5 h-3.5" />
             <span className="font-mono">Rate Limited</span>
           </div>
@@ -133,8 +133,8 @@ export function TopBar({ flightStats, satelliteCount, wsConnected }: TopBarProps
         </div>
 
         {/* UTC Clock */}
-        <div className="font-mono text-sm text-neutral-300 tabular-nums">
-          <span className="text-neutral-500">UTC </span>
+        <div className="hidden font-mono text-sm text-neutral-300 tabular-nums min-[390px]:block">
+          <span className="hidden text-neutral-500 min-[420px]:inline">UTC </span>
           {clock}
         </div>
       </div>
@@ -153,10 +153,10 @@ function StatChip({ label, value, color, icon }: {
   };
 
   return (
-    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs ${colorMap[color] ?? colorMap.cyan} select-none`}>
+    <div className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] sm:text-xs ${colorMap[color] ?? colorMap.cyan} select-none`}>
       <span>{icon}</span>
       <span className="font-mono font-semibold">{value}</span>
-      <span className="text-neutral-500">{label}</span>
+      <span className="hidden text-neutral-500 min-[420px]:inline">{label}</span>
     </div>
   );
 }

@@ -61,7 +61,7 @@ export const Minimap = memo(function Minimap({ mainViewState, cameraFootprint, m
 
   return (
     <div
-      className="absolute right-4 bottom-4 w-52 h-52 rounded-full overflow-hidden border border-cyan-400/40 z-30 shadow-[0_0_30px_rgba(0,0,0,0.5)]"
+      className="absolute bottom-4 right-4 z-30 hidden h-52 w-52 overflow-hidden rounded-full border border-cyan-400/40 shadow-[0_0_30px_rgba(0,0,0,0.5)] sm:block"
       style={{ background: 'radial-gradient(circle at 30% 20%, #153b62 0%, #071628 55%, #03060d 100%)' }}
     >
       <DeckGL

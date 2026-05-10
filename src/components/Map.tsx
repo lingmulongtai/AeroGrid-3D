@@ -187,11 +187,13 @@ export default function EarthMap({
     }
 
     if (layers.subseaCables || layers.powerPlants) {
-      const infra = createInfraLayers(
-        layers.subseaCables ? SUBSEA_CABLES : [],
-        layers.powerPlants ? POWER_PLANTS : [],
-        layers.labels,
-      );
+      const infra = createInfraLayers({
+        cables: SUBSEA_CABLES,
+        powerPlants: POWER_PLANTS,
+        showLabels: layers.labels,
+        showPowerGrid: layers.powerPlants,
+        showTelecoms: layers.subseaCables,
+      });
       list.push(...infra);
     }
 

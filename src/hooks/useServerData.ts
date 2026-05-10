@@ -6,13 +6,13 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Flight, FlightStats } from './useFlightData';
-import { useFlightData } from './useFlightData';
+import { calculateFlightStats, generateRealisticDemoFlights, useFlightData } from './useFlightData';
 import { useWeatherData } from './useWeatherData';
 
 const HISTORY_LENGTH = 10;
 const MAX_FLIGHTS    = 3_000;
 // After this long with no WS message, trigger HTTP fallback
-const WS_TIMEOUT_MS  = 8_000;
+const WS_TIMEOUT_MS  = 1_200;
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
@@ -67,10 +67,9 @@ export function useServerData(
   const [useFallback, setUseFallback] = useState(false);
 
   // ── Primary: WS-driven state ─────────────────────────────────────────────
-  const [wsFlights,     setWsFlights]     = useState<Flight[]>([]);
-  const [wsFlightStats, setWsFlightStats] = useState<FlightStats>({
-    total: 0, airborne: 0, avgAltitude: 0, avgSpeed: 0, isLive: false, isRateLimited: false,
-  });
+  const initialDemoRef = useRef<Flight[]>(flightsEnabled ? generateRealisticDemoFlights() : []);
+  const [wsFlights,     setWsFlights]     = useState<Flight[]>(() => initialDemoRef.current);
+  const [wsFlightStats, setWsFlightStats] = useState<FlightStats>(() => calculateFlightStats(initialDemoRef.current, false));
   const [wsRadarUrl, setWsRadarUrl] = useState<string | null>(null);
 
   // ── Fallback: HTTP polling hooks (idle when WS works) ───────────────────
@@ -199,7 +198,15 @@ export function useServerData(
     if (!flightsEnabled) {
       setWsFlights([]);
       setWsFlightStats({ total: 0, airborne: 0, avgAltitude: 0, avgSpeed: 0, isLive: false, isRateLimited: false });
+      return;
     }
+
+    setWsFlights((current) => {
+      if (current.length > 0) return current;
+      const demo = generateRealisticDemoFlights();
+      setWsFlightStats(calculateFlightStats(demo, false));
+      return demo;
+    });
   }, [flightsEnabled]);
 
   useEffect(() => {
@@ -208,8 +215,8 @@ export function useServerData(
 
   // ── Return WS data or fallback ────────────────────────────────────────────
   return {
-    flights:      useFallback ? fbFlights     : wsFlights,
-    flightStats:  useFallback ? fbStats       : wsFlightStats,
+    flights:      useFallback && fbFlights.length > 0 ? fbFlights : wsFlights,
+    flightStats:  useFallback && fbFlights.length > 0 ? fbStats : wsFlightStats,
     radarTileUrl: useFallback ? fbRadar       : wsRadarUrl,
     wsConnected:  !useFallback && wsConnected,
   };
