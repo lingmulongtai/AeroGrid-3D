@@ -16,7 +16,7 @@ export function MapControls({
   onToggleNight,
 }: MapControlsProps) {
   return (
-    <div className="absolute right-5 bottom-64 md:bottom-60 z-40 flex flex-col gap-2">
+    <div className="absolute right-3 top-[9.5rem] z-40 flex flex-col gap-2 sm:right-5 sm:top-auto sm:bottom-64 md:bottom-60">
       <ControlButton
         onClick={onToggleNight}
         active={nightMode}
@@ -55,7 +55,7 @@ function ControlButton({
       type="button"
       onClick={onClick}
       title={title}
-      className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all shadow-lg ${
+      className={`flex h-10 w-10 items-center justify-center rounded-xl border shadow-lg transition-all sm:h-9 sm:w-9 ${
         active
           ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-400'
           : 'bg-black/60 border-white/10 text-neutral-400 hover:text-white hover:border-white/20 hover:bg-white/10'
