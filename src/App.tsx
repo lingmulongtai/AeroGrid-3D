@@ -26,7 +26,7 @@ export default function App() {
     new Set(['stations', 'starlink', 'weather', 'gps', 'active']),
   );
   const [colorMode, setColorMode] = useState<ColorMode>('altitude');
-  const [mapStyle, setMapStyle] = useState<MapStyle>('dark');
+  const [mapStyle, setMapStyle] = useState<MapStyle>('opengrid');
 
   const [quality, setQuality] = useState<QualitySettings>(DEFAULT_QUALITY);
   const [settingsOpen, setSettingsOpen] = useState(false);

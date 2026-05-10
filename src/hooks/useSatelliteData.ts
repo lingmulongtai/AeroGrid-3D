@@ -68,6 +68,55 @@ function parseTLE(lines: string[], group: SatelliteGroup): { name: string; line1
   return sats;
 }
 
+
+function seededRandom(seed: number) {
+  let x = seed >>> 0;
+  return () => {
+    x = (x * 1664525 + 1013904223) >>> 0;
+    return x / 4294967296;
+  };
+}
+
+function buildDemoSatelliteCounts(satellites: SatelliteInfo[]): SatelliteGroupCounts {
+  const counts: SatelliteGroupCounts = { stations: 0, starlink: 0, weather: 0, gps: 0, active: 0, total: satellites.length };
+  satellites.forEach((sat) => { counts[sat.group]++; });
+  return counts;
+}
+
+function generateDemoSatellites(activeGroups: Set<SatelliteGroup>, date = new Date()): SatelliteInfo[] {
+  const groups: { group: SatelliteGroup; count: number; altitude: number; inclination: number; period: number }[] = [
+    { group: 'stations', count: 3, altitude: 420000, inclination: 51.6, period: 92.7 },
+    { group: 'starlink', count: activeGroups.has('starlink') ? 720 : 0, altitude: 550000, inclination: 53, period: 95.0 },
+    { group: 'weather', count: activeGroups.has('weather') ? 72 : 0, altitude: 820000, inclination: 98.7, period: 101.2 },
+    { group: 'gps', count: activeGroups.has('gps') ? 31 : 0, altitude: 20200000, inclination: 55, period: 718 },
+    { group: 'active', count: activeGroups.has('active') ? 380 : 0, altitude: 1200000, inclination: 74, period: 109 },
+  ];
+  const minutes = date.getTime() / 60000;
+  const satellites: SatelliteInfo[] = [];
+
+  groups.forEach(({ group, count, altitude, inclination, period }) => {
+    const random = seededRandom(3000 + group.length * 997);
+    for (let i = 0; i < count; i++) {
+      const raan = random() * 360;
+      const phase = ((minutes / period) * 360 + random() * 360 + i * (360 / Math.max(1, count))) % 360;
+      const lat = Math.sin((phase * Math.PI) / 180) * inclination;
+      const lon = ((raan + phase * (group === 'gps' ? 0.42 : 1.35) + 540) % 360) - 180;
+      satellites.push({
+        id: `demo-${group}-${i}`,
+        name: group === 'stations' ? ['ISS (ZARYA)', 'CSS (TIANGONG)', 'CREW DRAGON'][i] : `${group.toUpperCase()}-${String(i + 1).padStart(3, '0')}`,
+        longitude: lon,
+        latitude: Math.max(-84, Math.min(84, lat + (random() - 0.5) * 2.5)),
+        altitude: altitude + (random() - 0.5) * altitude * 0.04,
+        group,
+        orbitalPeriodMin: period,
+        isISS: group === 'stations' && i === 0,
+      });
+    }
+  });
+
+  return satellites;
+}
+
 function derivePeriodMinutes(tleLine2: string): number {
   try {
     const meanMotion = parseFloat(tleLine2.substring(52, 63));
@@ -79,11 +128,10 @@ function derivePeriodMinutes(tleLine2: string): number {
 }
 
 export function useSatelliteData(enabled: boolean, activeGroups: Set<SatelliteGroup>) {
-  const [satellites, setSatellites] = useState<SatelliteInfo[]>([]);
+  const initialDemoRef = useRef<SatelliteInfo[]>(enabled ? generateDemoSatellites(activeGroups) : []);
+  const [satellites, setSatellites] = useState<SatelliteInfo[]>(() => initialDemoRef.current);
   const [loading, setLoading] = useState(false);
-  const [groupCounts, setGroupCounts] = useState<SatelliteGroupCounts>({
-    stations: 0, starlink: 0, weather: 0, gps: 0, active: 0, total: 0,
-  });
+  const [groupCounts, setGroupCounts] = useState<SatelliteGroupCounts>(() => buildDemoSatelliteCounts(initialDemoRef.current));
 
   const tleByGroupRef = useRef<Map<SatelliteGroup, ReturnType<typeof parseTLE>>>(new Map());
   const animFrameRef = useRef<number>(0);
@@ -148,6 +196,14 @@ export function useSatelliteData(enabled: boolean, activeGroups: Set<SatelliteGr
       const counts: SatelliteGroupCounts = { stations: 0, starlink: 0, weather: 0, gps: 0, active: 0, total: 0 };
 
       const groups = Object.keys(CELESTRAK_URLS) as SatelliteGroup[];
+      const hasAnyTle = groups.some((group) => (tleByGroupRef.current.get(group)?.length ?? 0) > 0);
+      if (!hasAnyTle) {
+        const demo = generateDemoSatellites(activeGroups, date);
+        setSatellites(demo);
+        setGroupCounts(buildDemoSatelliteCounts(demo));
+        animFrameRef.current = requestAnimationFrame(propagate);
+        return;
+      }
 
       for (const group of groups) {
         if (!activeGroups.has(group) && group !== 'stations') continue; // Always show stations (ISS)

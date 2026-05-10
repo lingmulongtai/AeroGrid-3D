@@ -2,14 +2,28 @@ import { TileLayer } from '@deck.gl/geo-layers';
 import { BitmapLayer } from '@deck.gl/layers';
 import type { QualitySettings } from '../../types/quality';
 
-export type MapStyle = 'dark' | 'satellite' | 'night';
+export type MapStyle = 'opengrid' | 'dark' | 'satellite' | 'night';
 
 type TileConfig = {
   urls: string[];
   maxZoom: number;
+  desaturate?: number;
+  opacity?: number;
 };
 
 export const TILE_CONFIGS: Record<MapStyle, TileConfig> = {
+  // OpenGridWorks is visually close to OpenInfraMap: an OSM-derived light base map
+  // with infrastructure vector overlays. Use the canonical OSM raster tiles here so
+  // deck.gl GlobeView can keep the existing 3D globe pipeline.
+  opengrid: {
+    urls: [
+      'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    ],
+    maxZoom: 19,
+    desaturate: 0.05,
+  },
   dark: {
     urls: [
       'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
@@ -24,20 +38,17 @@ export const TILE_CONFIGS: Record<MapStyle, TileConfig> = {
     ],
     maxZoom: 19,
   },
-  // NASA city-lights tiles have a low zoom cap and often trigger "zoom level not supported"
-  // at close zooms. Use a high-zoom dark style here for stable UX.
   night: {
     urls: [
-      'https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
-      'https://b.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
-      'https://c.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
+      'https://openinframap.org/black-marble-2024/{z}/{x}/{y}.webp',
     ],
-    maxZoom: 20,
+    maxZoom: 8,
+    opacity: 0.9,
   },
 };
 
 export function createBasemapLayer(mapStyle: MapStyle, quality: QualitySettings) {
-  const cfg = TILE_CONFIGS[mapStyle] ?? TILE_CONFIGS.dark;
+  const cfg = TILE_CONFIGS[mapStyle] ?? TILE_CONFIGS.opengrid;
 
   return new TileLayer({
     id: 'basemap',
@@ -55,7 +66,8 @@ export function createBasemapLayer(mapStyle: MapStyle, quality: QualitySettings)
         data: null,
         image: props.data,
         bounds: [west, south, east, north],
-        desaturate: mapStyle === 'night' ? 0.15 : 0,
+        desaturate: cfg.desaturate ?? 0,
+        opacity: cfg.opacity ?? 1,
       } as any);
     },
   });
