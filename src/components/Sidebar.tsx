@@ -72,24 +72,25 @@ export function Sidebar({
       initial={{ x: -320, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ duration: 0.4, ease: 'easeOut' }}
-      className="absolute top-4 left-4 w-72 z-20 rounded-2xl border border-white/8 flex flex-col overflow-hidden"
+      className={`absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-20 flex flex-col overflow-hidden rounded-3xl border border-white/8 sm:left-4 sm:right-auto sm:top-4 sm:bottom-auto sm:w-72 sm:rounded-2xl ${
+        collapsed ? 'max-h-[60px]' : 'max-h-[min(58dvh,calc(100dvh-8.75rem))] sm:max-h-[calc(100vh-2rem)]'
+      }`}
       onPointerDown={(e) => e.stopPropagation()}
       style={{
         background: 'rgba(6,6,10,0.92)',
         backdropFilter: 'blur(20px)',
         boxShadow: '0 20px 60px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05)',
-        maxHeight: collapsed ? '64px' : 'calc(100vh - 2rem)',
       }}
     >
-      <div className="flex items-center gap-3 p-4 border-b border-white/5 flex-shrink-0">
+      <div className="flex flex-shrink-0 items-center gap-3 border-b border-white/5 p-3 sm:p-4">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-[0_0_16px_rgba(6,182,212,0.5)]">
           <Activity className="w-4 h-4 text-white" />
         </div>
-        <div className="flex-1">
-          <h1 className="text-base font-bold text-white tracking-tight leading-none">
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-base font-bold leading-none tracking-tight text-white">
             AeroGrid <span className="font-light text-cyan-400">3D</span>
           </h1>
-          <p className="text-[10px] text-neutral-600 mt-0.5 font-mono">Demo Command Panel</p>
+          <p className="mt-0.5 truncate font-mono text-[10px] text-neutral-600">Demo Command Panel</p>
         </div>
 
         <button
@@ -108,15 +109,15 @@ export function Sidebar({
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="flex-1 overflow-y-auto sidebar-scroll"
+            className="flex-1 overflow-y-auto overscroll-contain sidebar-scroll"
           >
             {flightStats.total > 0 && (
-              <div className="p-4 pb-3 border-b border-white/5">
+              <div className="border-b border-white/5 p-3 pb-3 sm:p-4 sm:pb-3">
                 <div className="flex items-center gap-1.5 mb-3">
                   <BarChart3 className="w-3.5 h-3.5 text-neutral-500" />
                   <span className="text-[10px] uppercase font-bold tracking-wider text-neutral-500">Live Stats</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-2">
                   <MiniStat label="Airborne" value={flightStats.airborne.toLocaleString()} color="yellow" />
                   <MiniStat label="Satellites" value={satelliteCounts.total.toLocaleString()} color="cyan" />
                   <MiniStat label="Quality" value={qualityPreset.toUpperCase()} color="blue" />
@@ -125,21 +126,21 @@ export function Sidebar({
               </div>
             )}
 
-            <div className="px-4 pt-3 pb-1">
+            <div className="px-3 pt-3 pb-1 sm:px-4">
               <div className="flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-neutral-500" />
                 <span className="text-[10px] uppercase font-bold tracking-wider text-neutral-500">Data Layers</span>
               </div>
             </div>
 
-            <div className="px-3 pb-2 space-y-1">
+            <div className="space-y-1 px-3 pb-2">
               <LayerToggle icon={<Plane className="w-4 h-4" />} active={layers.flights} label="Aviation Traffic" onToggle={() => onToggleLayer('flights')} />
               <LayerToggle icon={<CloudRain className="w-4 h-4" />} active={layers.weather} label="Weather" onToggle={() => onToggleLayer('weather')} />
               <LayerToggle icon={<Satellite className="w-4 h-4" />} active={layers.satellites} label="Satellites" onToggle={() => onToggleLayer('satellites')} />
-              <LayerToggle icon={<Cable className="w-4 h-4" />} active={layers.subseaCables} label="Subsea Cables" onToggle={() => onToggleLayer('subseaCables')} />
-              <LayerToggle icon={<Factory className="w-4 h-4" />} active={layers.powerPlants} label="Power Plants" onToggle={() => onToggleLayer('powerPlants')} />
+              <LayerToggle icon={<Cable className="w-4 h-4" />} active={layers.subseaCables} label="Data Centers" onToggle={() => onToggleLayer('subseaCables')} />
+              <LayerToggle icon={<Factory className="w-4 h-4" />} active={layers.powerPlants} label="Power Grid" onToggle={() => onToggleLayer('powerPlants')} />
 
-              <div className="pl-3 pt-1 space-y-1">
+              <div className="grid grid-cols-2 gap-1 pt-1 sm:block sm:space-y-1 sm:pl-3">
                 <SubOption label="Flight Trails" checked={layers.flightTrails} onChange={() => onToggleLayer('flightTrails')} />
                 <SubOption label="Satellite Trails" checked={layers.satelliteTrails} onChange={() => onToggleLayer('satelliteTrails')} />
                 <SubOption label="Labels" checked={layers.labels} onChange={() => onToggleLayer('labels')} />
@@ -147,7 +148,7 @@ export function Sidebar({
               </div>
             </div>
 
-            <div className="px-4 pb-3 border-t border-white/5 pt-3">
+            <div className="border-t border-white/5 px-3 pb-3 pt-3 sm:px-4">
               <button
                 type="button"
                 className="w-full text-left text-[10px] uppercase tracking-wider text-neutral-500 mb-2 flex items-center justify-between"
@@ -182,7 +183,7 @@ export function Sidebar({
               )}
             </div>
 
-            <div className="px-4 py-3 border-t border-white/5">
+            <div className="border-t border-white/5 px-3 py-3 sm:px-4">
               <div className="flex items-center gap-1.5 mb-2">
                 <Tag className="w-3.5 h-3.5 text-neutral-500" />
                 <span className="text-[10px] uppercase font-bold tracking-wider text-neutral-500">Color Mode</span>
@@ -203,16 +204,17 @@ export function Sidebar({
               </div>
             </div>
 
-            <div className="px-4 pb-3 border-t border-white/5 pt-3">
+            <div className="border-t border-white/5 px-3 pb-3 pt-3 sm:px-4">
               <div className="flex items-center gap-1.5 mb-2">
                 <Map className="w-3.5 h-3.5 text-neutral-500" />
                 <span className="text-[10px] uppercase font-bold tracking-wider text-neutral-500">Map Style</span>
               </div>
               <div className="flex gap-1">
                 {([
-                  ['dark', 'Dark Ocean'],
+                  ['opengrid', 'OpenGrid'],
+                  ['dark', 'Dark'],
                   ['satellite', 'Satellite'],
-                  ['night', 'Earth at Night'],
+                  ['night', 'Night'],
                 ] as [MapStyle, string][]).map(([style, label]) => (
                   <button
                     type="button"
@@ -228,7 +230,7 @@ export function Sidebar({
               </div>
             </div>
 
-            <div className="p-3 border-t border-white/5 grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2 border-t border-white/5 p-3">
               <button
                 type="button"
                 className="flex items-center justify-center gap-1.5 py-2 rounded-xl border border-white/8 bg-white/3 text-neutral-300 hover:bg-white/8 text-xs"
@@ -258,7 +260,7 @@ function MiniStat({ label, value, color }: { label: string; value: string; color
     yellow: 'text-yellow-400', cyan: 'text-cyan-400', blue: 'text-blue-400', purple: 'text-purple-400',
   };
   return (
-    <div className="bg-white/3 rounded-xl p-2 border border-white/5">
+    <div className="rounded-xl border border-white/5 bg-white/3 p-2">
       <p className="text-neutral-600 text-[9px] uppercase tracking-wider">{label}</p>
       <p className={`font-mono text-xs font-bold mt-0.5 ${colorMap[color] ?? 'text-white'}`}>{value}</p>
     </div>
@@ -274,11 +276,11 @@ function LayerToggle({ active, onToggle, icon, label }: {
   return (
     <button
       type="button"
-      className={`w-full flex items-center gap-2 px-2 py-2 rounded-xl border ${active ? 'bg-white/6 border-white/10 text-white' : 'border-transparent text-neutral-500 hover:bg-white/5'}`}
+      className={`w-full flex items-center gap-2 rounded-xl border px-2 py-2.5 sm:py-2 ${active ? 'bg-white/6 border-white/10 text-white' : 'border-transparent text-neutral-500 hover:bg-white/5'}`}
       onClick={onToggle}
     >
       <span className="w-7 h-7 rounded-lg border border-white/10 flex items-center justify-center">{icon}</span>
-      <span className="text-sm flex-1 text-left">{label}</span>
+      <span className="flex-1 text-left text-sm">{label}</span>
       <span className={`w-9 h-5 rounded-full ${active ? 'bg-cyan-500' : 'bg-neutral-800'} relative`}>
         <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${active ? 'translate-x-4' : 'translate-x-0.5'}`} />
       </span>
@@ -295,7 +297,7 @@ function SubOption({ label, checked, onChange }: {
     <button
       type="button"
       onClick={onChange}
-      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs hover:bg-white/5"
+      className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs hover:bg-white/5 sm:py-1.5"
     >
       <span className={`w-1.5 h-1.5 rounded-full ${checked ? 'bg-cyan-400' : 'bg-neutral-700'}`} />
       <span className={`flex-1 text-left ${checked ? 'text-neutral-200' : 'text-neutral-500'}`}>{label}</span>

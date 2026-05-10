@@ -14,7 +14,7 @@ export function SettingsModal({ open, quality, onApplyPreset, onClose }: Setting
   return (
     <div className="absolute inset-0 z-40 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0b101b] text-white shadow-2xl"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-[#0b101b] text-white shadow-2xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-white/10">
@@ -24,7 +24,7 @@ export function SettingsModal({ open, quality, onApplyPreset, onClose }: Setting
           </button>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="space-y-4 overflow-y-auto p-4 sidebar-scroll">
           <div>
             <p className="text-xs text-neutral-400 mb-2">Quality Preset</p>
             <select
@@ -38,7 +38,7 @@ export function SettingsModal({ open, quality, onApplyPreset, onClose }: Setting
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="grid grid-cols-2 gap-2 text-xs min-[420px]:grid-cols-4 sm:grid-cols-2">
             <Info label="DPR" value={quality.dpr.toFixed(1)} />
             <Info label="Max Flights" value={quality.maxFlights.toLocaleString()} />
             <Info label="Max Satellites" value={quality.maxSatellites.toLocaleString()} />

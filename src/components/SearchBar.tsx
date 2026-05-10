@@ -72,10 +72,10 @@ export function SearchBar({ flights, satellites, onSelect }: SearchBarProps) {
   }, []);
 
   return (
-    <div className="absolute top-0 left-1/2 -translate-x-1/2 z-30 w-[26rem] pt-1">
+    <div className="absolute left-3 right-3 top-[5.75rem] z-30 sm:left-1/2 sm:right-auto sm:top-0 sm:w-[26rem] sm:-translate-x-1/2 sm:pt-1">
       {/* Input */}
       <div
-        className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/10 shadow-lg"
+        className="flex items-center gap-2 rounded-2xl border border-white/10 px-3 py-2.5 shadow-lg sm:rounded-xl sm:py-2"
         style={{ background: 'rgba(10,10,16,0.85)', backdropFilter: 'blur(16px)' }}
       >
         <Search className="w-4 h-4 text-neutral-500 flex-shrink-0" />
@@ -87,7 +87,7 @@ export function SearchBar({ flights, satellites, onSelect }: SearchBarProps) {
           onFocus={() => query.trim().length >= 2 && setOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder="Search callsign, ICAO, satellite..."
-          className="flex-1 bg-transparent text-white text-sm placeholder-neutral-600 outline-none"
+          className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder-neutral-600"
         />
         {query && (
           <button
@@ -103,7 +103,7 @@ export function SearchBar({ flights, satellites, onSelect }: SearchBarProps) {
       {open && hasResults && (
         <div
           ref={dropdownRef}
-          className="mt-1.5 rounded-xl border border-white/10 overflow-hidden shadow-xl"
+          className="mt-1.5 max-h-[45dvh] overflow-y-auto rounded-2xl border border-white/10 shadow-xl sidebar-scroll sm:rounded-xl"
           style={{ background: 'rgba(10,10,16,0.95)', backdropFilter: 'blur(20px)' }}
         >
           {results.map((result, i) => (
@@ -111,13 +111,13 @@ export function SearchBar({ flights, satellites, onSelect }: SearchBarProps) {
               key={result.type === 'flight' ? result.data.id : result.data.id + '-sat'}
               onClick={() => handleSelect(result)}
               onMouseEnter={() => setHighlighted(i)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+              className={`w-full flex items-center gap-2 px-3 py-3 text-left transition-colors sm:gap-3 sm:px-4 sm:py-2.5 ${
                 i === highlighted ? 'bg-white/8' : 'hover:bg-white/5'
               } ${i > 0 ? 'border-t border-white/5' : ''}`}
             >
               {result.type === 'flight' ? (
                 <>
-                  <span className="text-yellow-400 font-mono font-bold text-sm w-20 truncate">
+                  <span className="w-16 truncate font-mono text-sm font-bold text-yellow-400 sm:w-20">
                     {result.data.callsign}
                   </span>
                   <span className="text-base">{countryToFlag(result.data.country)}</span>

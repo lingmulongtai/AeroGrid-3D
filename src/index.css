@@ -76,3 +76,19 @@ body {
 .border-white\/8 {
   border-color: rgba(255, 255, 255, 0.08);
 }
+
+
+/* Compact horizontal stats on narrow screens */
+.mobile-chip-scroll {
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.mobile-chip-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+@supports (height: 100dvh) {
+  body {
+    min-height: 100dvh;
+  }
+}

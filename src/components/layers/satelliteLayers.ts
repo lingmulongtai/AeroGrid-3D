@@ -1,6 +1,10 @@
-import { ColumnLayer, PathLayer, TextLayer } from '@deck.gl/layers';
+import { PathLayer, TextLayer } from '@deck.gl/layers';
+import { SimpleMeshLayer } from '@deck.gl/mesh-layers';
 import type { SatelliteInfo, SatelliteGroup } from '../../hooks/useSatelliteData';
 import { SATELLITE_COLORS, SATELLITE_RADII } from '../../hooks/useSatelliteData';
+import { createSatelliteGeometry } from './modelGeometries';
+
+const SATELLITE_GEOMETRY = createSatelliteGeometry();
 
 export function createSatelliteLayers({
   satellites,
@@ -26,16 +30,23 @@ export function createSatelliteLayers({
     if (groupSats.length === 0) continue;
 
     layers.push(
-      new ColumnLayer<SatelliteInfo>({
-        id: `satellites-${group}`,
+      new SimpleMeshLayer<SatelliteInfo>({
+        id: `satellite-models-${group}`,
         data: groupSats,
-        diskResolution: 4,
-        radius: Math.max(9000, SATELLITE_RADII[group] * 0.45),
-        extruded: true,
-        getElevation: (d) => Math.max(5000, d.group === 'stations' ? 30000 : 14000),
+        mesh: SATELLITE_GEOMETRY,
         getPosition: (d) => [d.longitude, d.latitude, d.altitude],
-        getFillColor: SATELLITE_COLORS[group],
-        getLineColor: [5, 8, 15, 160],
+        getColor: SATELLITE_COLORS[group],
+        getOrientation: (d) => [0, ((d.longitude + d.latitude) * 3) % 360, d.group === 'stations' ? 12 : 0],
+        getScale: (d) => {
+          const base = Math.max(600, SATELLITE_RADII[d.group] / 18);
+          return [base, base, base];
+        },
+        material: {
+          ambient: 0.5,
+          diffuse: 0.55,
+          shininess: 42,
+          specularColor: [160, 190, 255],
+        },
         pickable: true,
         onClick: ({ object }: any) => object && onSatelliteClick(object),
       }),
@@ -68,7 +79,7 @@ export function createSatelliteLayers({
         id: 'satellite-labels',
         data: satellites.filter((s) => s.isISS),
         getPosition: (d) => [d.longitude, d.latitude, d.altitude],
-        getText: (d) => (d.name.toUpperCase().includes('ISS') ? '🛸 ISS' : d.name),
+        getText: (d) => (d.name.toUpperCase().includes('ISS') ? 'ISS' : d.name),
         getSize: 12,
         getColor: [120, 255, 180, 230],
         billboard: true,
