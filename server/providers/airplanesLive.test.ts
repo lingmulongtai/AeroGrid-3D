@@ -49,4 +49,17 @@ describe('AirplanesLiveProvider', () => {
       expect.objectContaining<Partial<ProviderError>>({ statusCode: 429, retryAfterSeconds: 120 }),
     );
   });
+
+  it('serializes upstream calls at one request per second', async () => {
+    let now = 1_000;
+    const sleep = vi.fn(async (milliseconds: number) => { now += milliseconds; });
+    const fetchFn = vi.fn(async () => Response.json({ ac: [], now }));
+    const provider = new AirplanesLiveProvider(fetchFn, () => now, sleep);
+
+    await provider.fetchFlights(35.68, 139.76, 150);
+    await provider.fetchFlights(35.7, 139.8, 150);
+
+    expect(sleep).toHaveBeenCalledWith(1_000);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
 });

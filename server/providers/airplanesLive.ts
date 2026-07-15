@@ -7,6 +7,7 @@ const KNOTS_TO_METERS_PER_SECOND = 0.514444;
 const FEET_PER_MINUTE_TO_METERS_PER_SECOND = 0.00508;
 
 type FetchLike = typeof fetch;
+type Sleep = (milliseconds: number) => Promise<void>;
 
 interface AirplanesLiveAircraft {
   hex?: string;
@@ -75,13 +76,34 @@ export function normalizeAirplanesLiveAircraft(raw: AirplanesLiveAircraft): Flig
 }
 
 export class AirplanesLiveProvider {
-  constructor(private readonly fetchFn: FetchLike = fetch) {}
+  private requestQueue: Promise<void> = Promise.resolve();
+  private nextRequestAt = 0;
+
+  constructor(
+    private readonly fetchFn: FetchLike = fetch,
+    private readonly now: () => number = Date.now,
+    private readonly sleep: Sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  ) {}
 
   async fetchFlights(
     latitude: number,
     longitude: number,
     radiusNm: number,
   ): Promise<{ items: FlightRecord[]; generatedAtMs: number }> {
+    const request = this.requestQueue.then(() => this.performRequest(latitude, longitude, radiusNm));
+    this.requestQueue = request.then(() => undefined, () => undefined);
+    return request;
+  }
+
+  private async performRequest(
+    latitude: number,
+    longitude: number,
+    radiusNm: number,
+  ): Promise<{ items: FlightRecord[]; generatedAtMs: number }> {
+    const waitMs = Math.max(0, this.nextRequestAt - this.now());
+    if (waitMs > 0) await this.sleep(waitMs);
+    this.nextRequestAt = this.now() + 1_000;
+
     const url = `${AIRPLANES_LIVE_BASE_URL}/${latitude.toFixed(4)}/${longitude.toFixed(4)}/${Math.round(radiusNm)}`;
     let response: Response;
     try {
@@ -115,7 +137,7 @@ export class AirplanesLiveProvider {
 
     return {
       items,
-      generatedAtMs: Number.isFinite(payload.now) ? payload.now as number : Date.now(),
+      generatedAtMs: Number.isFinite(payload.now) ? payload.now as number : this.now(),
     };
   }
 }

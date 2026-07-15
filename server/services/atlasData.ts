@@ -58,6 +58,11 @@ function messageFromError(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown provider error';
 }
 
+function nextUtcDay(nowMs: number): number {
+  const date = new Date(nowMs);
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1);
+}
+
 export function createAtlasDataService(dependencies: AtlasDataDependencies = {}): AtlasDataService {
   const flightProvider = dependencies.flightProvider ?? new AirplanesLiveProvider();
   const weatherProvider = dependencies.weatherProvider ?? new RainViewerProvider();
@@ -65,15 +70,35 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
   const now = dependencies.now ?? Date.now;
   const flightCache = new ExpiringCache<DataSnapshot<FlightRecord>>();
   const weatherCache = new ExpiringCache<DataSnapshot<WeatherFrame>>();
+  const inFlightRequests = new Map<string, Promise<DataSnapshot<FlightRecord>>>();
 
   let flightHealth = initialHealth('airplanes.live');
   let weatherHealth = initialHealth('rainviewer');
+  let flightProviderBlockedUntil = 0;
 
   async function getFlights(query: FlightQuery): Promise<DataSnapshot<FlightRecord>> {
-    const nowMs = now();
     const key = flightCacheKey(query);
+    const existingRequest = inFlightRequests.get(key);
+    if (existingRequest) return existingRequest;
+
+    const request = loadFlights(key, query);
+    inFlightRequests.set(key, request);
+    try {
+      return await request;
+    } finally {
+      if (inFlightRequests.get(key) === request) inFlightRequests.delete(key);
+    }
+  }
+
+  async function loadFlights(key: string, query: FlightQuery): Promise<DataSnapshot<FlightRecord>> {
+    const nowMs = now();
     const cached = flightCache.getFresh(key, nowMs);
     if (cached) return cached;
+
+    if (nowMs < flightProviderBlockedUntil) {
+      const retryAfterSeconds = Math.ceil((flightProviderBlockedUntil - nowMs) / 1_000);
+      return staleFlightSnapshot(key, query, nowMs, 'Flight provider retry is paused after HTTP 429', 'rate-limited', retryAfterSeconds);
+    }
 
     if (!quota.tryTake(nowMs)) {
       const quotaState = quota.getState(nowMs);
@@ -119,6 +144,11 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
       const sourceStatus = statusFromError(error);
       const message = messageFromError(error);
       const retryAfterSeconds = error instanceof ProviderError ? error.retryAfterSeconds : undefined;
+      if (sourceStatus === 'rate-limited') {
+        flightProviderBlockedUntil = retryAfterSeconds
+          ? nowMs + Math.max(1, retryAfterSeconds) * 1_000
+          : nextUtcDay(nowMs);
+      }
       flightHealth = {
         status: sourceStatus,
         source: 'airplanes.live',
