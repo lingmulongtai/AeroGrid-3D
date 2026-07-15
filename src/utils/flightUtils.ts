@@ -1,32 +1,8 @@
-export type AircraftCategory = 'heavy' | 'large' | 'medium' | 'small' | 'light' | 'helicopter' | 'unknown';
+import type { FlightCategory } from '../../shared/contracts';
+
+export type AircraftCategory = FlightCategory;
 
 // OpenSky Network category field (state[17]) mapping
-export function mapAircraftCategory(cat: number | null | undefined): AircraftCategory {
-  switch (cat) {
-    case 6: return 'heavy';       // Heavy (>300,000 lb)
-    case 5: return 'heavy';       // High vortex large
-    case 4: return 'large';       // Large (75,000–300,000 lb)
-    case 3: return 'medium';      // Small (15,500–75,000 lb)
-    case 2: return 'small';       // Light (<15,500 lb)
-    case 9: return 'light';       // Glider / sailplane
-    case 7: return 'small';       // High performance (>5g / >400 kt)
-    case 8: return 'helicopter';  // Rotorcraft
-    case 10: return 'light';      // Lighter than air
-    case 11: return 'light';      // Skydiver
-    case 12: return 'light';      // Ultralight / hang glider
-    case 15: return 'heavy';      // Space / transatmospheric
-    default: return 'unknown';
-  }
-}
-
-// Derive category from velocity when OpenSky category field is missing
-export function inferCategoryFromVelocity(velocity: number): AircraftCategory {
-  if (velocity > 220) return 'large';
-  if (velocity > 100) return 'medium';
-  if (velocity > 50) return 'small';
-  return 'light';
-}
-
 // Color by altitude: low=orange, mid=yellow, high=cyan/blue
 export function getAltitudeColor(altitude: number): [number, number, number, number] {
   if (altitude < 3000) return [255, 100, 0, 220];
@@ -52,8 +28,8 @@ export function getCategoryColor(category: AircraftCategory): [number, number, n
     case 'medium': return [255, 220, 0, 220];
     case 'small': return [100, 255, 100, 220];
     case 'light': return [150, 200, 255, 220];
-    case 'helicopter': return [200, 0, 255, 220];
-    default: return [200, 200, 200, 180];
+    case 'high_performance': return [255, 70, 190, 220];
+    case 'rotorcraft': return [200, 0, 255, 220];
   }
 }
 
@@ -120,8 +96,8 @@ export function getCategoryScale(category: AircraftCategory): [number, number, n
     case 'medium': return [2.0, 2.0, 2.0];
     case 'small': return [1.2, 1.2, 1.2];
     case 'light': return [0.9, 0.9, 0.9];
-    case 'helicopter': return [1.0, 1.0, 1.0];
-    default: return [1.5, 1.5, 1.5];
+    case 'high_performance': return [1.4, 1.4, 1.4];
+    case 'rotorcraft': return [1.0, 1.0, 1.0];
   }
 }
 
@@ -132,7 +108,7 @@ export function getCategorySizeScale(category: AircraftCategory): number {
     case 'medium': return 35;
     case 'small': return 22;
     case 'light': return 16;
-    case 'helicopter': return 18;
-    default: return 30;
+    case 'high_performance': return 24;
+    case 'rotorcraft': return 18;
   }
 }

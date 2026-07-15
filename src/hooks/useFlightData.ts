@@ -1,20 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { AircraftCategory, mapAircraftCategory, inferCategoryFromVelocity } from '../utils/flightUtils';
+import type { FlightCategory, FlightRecord } from '../../shared/contracts';
 
-export interface Flight {
-  id: string;
-  callsign: string;
-  country: string;
-  longitude: number;
-  latitude: number;
-  altitude: number; // meters
-  velocity: number; // m/s
-  heading: number; // degrees true track
-  verticalRate: number; // m/s (positive = climbing)
-  onGround: boolean;
-  category: AircraftCategory;
-  positionHistory: [number, number, number][]; // [lon, lat, alt][]
-}
+export type Flight = FlightRecord;
 
 export interface FlightStats {
   total: number;
@@ -25,10 +11,7 @@ export interface FlightStats {
   isRateLimited: boolean;
 }
 
-const MAX_FLIGHTS = 3000;
 const HISTORY_LENGTH = 10;
-const FETCH_INTERVAL_MS = 20000;
-const RATE_LIMIT_BACKOFF_MS = 60000;
 const DEMO_FLIGHT_COUNT = 2200;
 
 type AirportSeed = [code: string, country: string, lon: number, lat: number];
@@ -54,7 +37,7 @@ const ROUTES: [number, number][] = [
 ];
 
 const AIRLINES = ['JAL', 'ANA', 'UAL', 'DAL', 'AAL', 'BAW', 'AFR', 'DLH', 'KLM', 'SIA', 'UAE', 'QTR', 'KAL', 'CPA'];
-const CATEGORIES: AircraftCategory[] = ['heavy', 'large', 'medium', 'small', 'light'];
+const CATEGORIES: FlightCategory[] = ['heavy', 'large', 'medium', 'small', 'light'];
 
 function seededRandom(seed: number) {
   let x = seed >>> 0;
@@ -109,7 +92,7 @@ function bearingBetween(from: [number, number], to: [number, number]): number {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
-function categoryForDistance(distance: number, rnd: number): AircraftCategory {
+function categoryForDistance(distance: number, rnd: number): FlightCategory {
   if (distance > 6500) return rnd > 0.28 ? 'heavy' : 'large';
   if (distance > 2500) return rnd > 0.45 ? 'large' : 'medium';
   return CATEGORIES[Math.min(CATEGORIES.length - 1, Math.floor(rnd * CATEGORIES.length))];
@@ -155,6 +138,7 @@ function makeFlight(index: number, nowMs: number): Flight {
     verticalRate,
     onGround: false,
     category,
+    lastSeenSeconds: 0,
     positionHistory: history,
   };
 }
@@ -173,125 +157,4 @@ export function calculateFlightStats(flights: Flight[], isLive: boolean, isRateL
     isLive,
     isRateLimited,
   };
-}
-
-function simulateMove(f: Flight): Flight {
-  const distanceMeters = f.velocity * (FETCH_INTERVAL_MS / 1000);
-  const angularDistance = distanceMeters / 6371000;
-  const bearing = toRad(f.heading);
-  const lat1 = toRad(f.latitude);
-  const lon1 = toRad(f.longitude);
-
-  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(angularDistance) + Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearing));
-  const lon2 = lon1 + Math.atan2(
-    Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(lat1),
-    Math.cos(angularDistance) - Math.sin(lat1) * Math.sin(lat2),
-  );
-  const lon = wrapLon(toDeg(lon2));
-  const lat = Math.max(-85, Math.min(85, toDeg(lat2)));
-  const alt = Math.max(600, f.altitude + f.verticalRate * (FETCH_INTERVAL_MS / 1000));
-  const pos: [number, number, number] = [lon, lat, alt];
-  return {
-    ...f,
-    longitude: lon,
-    latitude: lat,
-    altitude: alt,
-    heading: (f.heading + (Math.sin(lon * 0.1) * 0.3)) % 360,
-    positionHistory: [...f.positionHistory, pos].slice(-HISTORY_LENGTH),
-  };
-}
-
-export function useFlightData(enabled: boolean, showOnGround: boolean = false) {
-  const [flights, setFlights] = useState<Flight[]>([]);
-  const [stats, setStats] = useState<FlightStats>({ total: 0, airborne: 0, avgAltitude: 0, avgSpeed: 0, isLive: false, isRateLimited: false });
-  const historyRef = useRef<Map<string, [number, number, number][]>>(new Map());
-  const isRateLimitedRef = useRef(false);
-  const lastFetchRef = useRef(0);
-
-  const fetchFlights = useCallback(async () => {
-    if (!enabled) return;
-
-    const now = Date.now();
-    if (isRateLimitedRef.current && now - lastFetchRef.current < RATE_LIMIT_BACKOFF_MS) return;
-    lastFetchRef.current = now;
-
-    try {
-      const res = await fetch('https://opensky-network.org/api/states/all');
-
-      if (res.status === 429) {
-        isRateLimitedRef.current = true;
-        setStats(s => ({ ...s, isRateLimited: true, isLive: false }));
-        return;
-      }
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      isRateLimitedRef.current = false;
-      const data = await res.json();
-      const history = historyRef.current;
-
-      const mapped: Flight[] = data.states
-        .filter((s: any[]) => s[5] != null && s[6] != null)
-        .map((s: any[]): Flight => {
-          const id: string = s[0];
-          const lon: number = s[5];
-          const lat: number = s[6];
-          const alt: number = (s[13] != null ? s[13] : (s[7] ?? 0));
-          const vel: number = s[9] ?? 0;
-          const hdg: number = s[10] ?? 0;
-          const vr: number = s[11] ?? 0;
-          const rawCat: number = s[17] ?? 0;
-          const category: AircraftCategory = rawCat > 0 ? mapAircraftCategory(rawCat) : inferCategoryFromVelocity(vel);
-          const prev = history.get(id) ?? [];
-          const entry: [number, number, number] = [lon, lat, alt];
-          const updated = [...prev, entry].slice(-HISTORY_LENGTH);
-          history.set(id, updated);
-
-          return {
-            id,
-            callsign: s[1] ? String(s[1]).trim() : 'N/A',
-            country: s[2] ?? 'Unknown',
-            longitude: lon,
-            latitude: lat,
-            altitude: alt,
-            velocity: vel,
-            heading: hdg,
-            verticalRate: vr,
-            onGround: Boolean(s[8]),
-            category,
-            positionHistory: updated,
-          };
-        });
-
-      const filtered = (showOnGround ? mapped : mapped.filter(f => !f.onGround && f.altitude > 0))
-        .slice(0, MAX_FLIGHTS);
-      const nextFlights = filtered.length > 0 ? filtered : generateRealisticDemoFlights();
-
-      setFlights(nextFlights);
-      setStats(calculateFlightStats(nextFlights, filtered.length > 0, false));
-    } catch {
-      setFlights(prev => {
-        const next = prev.length === 0 ? generateRealisticDemoFlights() : prev.map(f => simulateMove(f));
-        setStats(calculateFlightStats(next, false, isRateLimitedRef.current));
-        return next;
-      });
-    }
-  }, [enabled, showOnGround]);
-
-  useEffect(() => {
-    if (!enabled) {
-      setFlights([]);
-      setStats({ total: 0, airborne: 0, avgAltitude: 0, avgSpeed: 0, isLive: false, isRateLimited: false });
-      return;
-    }
-
-    const demo = generateRealisticDemoFlights();
-    setFlights(demo);
-    setStats(calculateFlightStats(demo, false));
-    fetchFlights();
-    const interval = window.setInterval(fetchFlights, FETCH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [enabled, fetchFlights]);
-
-  return { flights, stats };
 }
