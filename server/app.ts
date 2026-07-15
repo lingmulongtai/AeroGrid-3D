@@ -6,15 +6,30 @@ import type { AtlasDataService } from './services/atlasData.js';
 interface AppOptions {
   dataService: AtlasDataService;
   staticDir?: string;
+  logger?: (event: Record<string, unknown>) => void;
 }
 
 function parseNumber(value: unknown): number {
   return Number.parseFloat(String(value ?? ''));
 }
 
-export function createApp({ dataService, staticDir }: AppOptions): Express {
+export function createApp({ dataService, staticDir, logger }: AppOptions): Express {
   const app = express();
   app.disable('x-powered-by');
+  if (logger) {
+    app.use((req, res, next) => {
+      const startedAt = performance.now();
+      res.on('finish', () => logger({
+        level: res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
+        event: 'http.request',
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+        durationMs: Math.round(performance.now() - startedAt),
+      }));
+      next();
+    });
+  }
   app.use(express.json({ limit: '32kb' }));
   app.use('/api', (_req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');

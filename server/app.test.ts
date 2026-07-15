@@ -50,4 +50,15 @@ describe('AeroGrid REST API', () => {
     await request(app).get('/api/v1/status').expect(200);
     expect(service.getFlights).toHaveBeenCalledWith({ latitude: 35.68, longitude: 139.76, radiusNm: 150 });
   });
+
+  it('emits structured request telemetry when a logger is configured', async () => {
+    const logger = vi.fn();
+    const app = createApp({ dataService: serviceStub(), logger });
+
+    await request(app).get('/api/v1/status').expect(200);
+
+    expect(logger).toHaveBeenCalledWith(expect.objectContaining({
+      level: 'info', event: 'http.request', method: 'GET', path: '/api/v1/status', status: 200,
+    }));
+  });
 });
