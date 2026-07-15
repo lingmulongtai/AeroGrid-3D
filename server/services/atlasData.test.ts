@@ -63,4 +63,34 @@ describe('AtlasDataService', () => {
       mode: 'live-beta', source: 'airplanes.live', status: 'rate-limited', items: [],
     });
   });
+
+  it('deduplicates concurrent requests for the same coverage area', async () => {
+    let resolveProvider!: (value: { items: FlightRecord[]; generatedAtMs: number }) => void;
+    const providerResult = new Promise<{ items: FlightRecord[]; generatedAtMs: number }>((resolve) => { resolveProvider = resolve; });
+    const fetchFlights = vi.fn(() => providerResult);
+    const now = Date.UTC(2026, 6, 16, 0, 0, 0);
+    const service = createAtlasDataService({
+      flightProvider: { fetchFlights }, weatherProvider: { fetchWeather: vi.fn() }, now: () => now,
+    });
+
+    const first = service.getFlights(query);
+    const second = service.getFlights(query);
+    resolveProvider({ items: [flight], generatedAtMs: now });
+
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    expect(fetchFlights).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops upstream retries after HTTP 429', async () => {
+    let now = Date.UTC(2026, 6, 16, 0, 0, 0);
+    const fetchFlights = vi.fn().mockRejectedValue(new ProviderError('rate limited', 429, 120));
+    const service = createAtlasDataService({
+      flightProvider: { fetchFlights }, weatherProvider: { fetchWeather: vi.fn() }, now: () => now,
+    });
+
+    await expect(service.getFlights(query)).resolves.toMatchObject({ status: 'rate-limited', retryAfterSeconds: 120 });
+    now += 60_000;
+    await expect(service.getFlights({ ...query, latitude: 35.7 })).resolves.toMatchObject({ status: 'rate-limited', retryAfterSeconds: 60 });
+    expect(fetchFlights).toHaveBeenCalledTimes(1);
+  });
 });
