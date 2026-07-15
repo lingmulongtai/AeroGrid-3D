@@ -6,8 +6,10 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "outDir": "./dist"
+    "rootDir": "..",
+    "outDir": "../server-dist",
+    "noEmit": false
   },
-  "include": ["./**/*.ts", "../shared/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["./**/*.ts", "../shared/contracts.ts"],
+  "exclude": ["node_modules", "dist", "../server-dist", "**/*.test.ts"]
 }

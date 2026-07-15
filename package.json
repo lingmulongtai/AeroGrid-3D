@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "concurrently -n api,web -c cyan,yellow \"npm run server:dev\" \"npm run dev:client\"",
     "dev:client": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
+    "build": "npm run clean && npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "node -e \"require('fs').rmSync('server-dist',{recursive:true,force:true})\" && tsc -p server/tsconfig.json",
     "preview": "vite preview",
-    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "clean": "node -e \"for(const path of ['dist','server-dist'])require('fs').rmSync(path,{recursive:true,force:true})\"",
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -17,7 +19,7 @@
     "check": "npm run lint && npm run test && npm run build",
     "server": "tsx server/index.ts",
     "server:dev": "tsx watch server/index.ts",
-    "start": "tsx server/index.ts"
+    "start": "node server-dist/server/index.js"
   },
   "dependencies": {
     "@deck.gl/core": "^9.3.1",
