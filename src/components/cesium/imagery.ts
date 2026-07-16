@@ -23,7 +23,9 @@ export function mapStyleForView(
   latitude: number,
   cameraHeight: number,
 ): ResolvedMapStyle {
-  if (Math.abs(latitude) >= POLAR_BASEMAP_LATITUDE) return 'opengrid';
+  if (Math.abs(latitude) >= POLAR_BASEMAP_LATITUDE) {
+    return style === 'satellite' ? 'satellite-global' : 'opengrid';
+  }
   if (cameraHeight < ORBITAL_BASEMAP_HEIGHT) return style;
   return style === 'satellite' ? 'satellite-global' : 'opengrid';
 }
