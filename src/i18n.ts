@@ -30,6 +30,7 @@ const en = {
   'search.empty': 'No aircraft in the loaded area',
   'controls.layers': 'Layers',
   'controls.flights': 'Aircraft',
+  'controls.satellites': 'Satellites',
   'controls.weather': 'Weather',
   'controls.trails': 'Trails',
   'controls.airports': 'Airports',
@@ -50,7 +51,7 @@ const en = {
   'controls.satellite': 'Satellite',
   'controls.night': 'Night',
   'controls.space': 'Space Preview',
-  'controls.spaceBody': 'Live satellite data will return after the aviation foundation is proven.',
+  'controls.spaceBody': 'A deterministic 3D orbital preview. It is visually animated and never presented as live telemetry.',
   'controls.mapControls': 'Map controls',
   'controls.dayLighting': 'Day lighting',
   'controls.nightLighting': 'Night lighting',
@@ -58,7 +59,7 @@ const en = {
   'controls.zoomOut': 'Zoom out',
   'controls.resetView': 'Reset view',
   'controls.globe': 'Interactive 3D globe',
-  'controls.tiltHint': 'Shift + drag to tilt',
+  'controls.tiltHint': 'Shift / Ctrl + drag to orbit',
   'flight.track': 'Track aircraft',
   'flight.stopTracking': 'Stop tracking',
   'flight.dismiss': 'Dismiss',
@@ -74,7 +75,7 @@ const en = {
   'weather.demo': 'Stylized demo weather',
   'weather.live': 'RainViewer radar · {value}',
   'weather.unavailable': 'Weather radar is temporarily unavailable.',
-  'footer.attribution': '3D engine © Cesium · Global relief © NASA GIBS · Imagery © Esri / CARTO / OpenInfraMap · Aircraft © Airplanes.live · Radar © RainViewer',
+  'footer.attribution': '3D engine © Cesium · Global imagery © Natural Earth / Cesium · Detail imagery © Esri / CARTO / OpenInfraMap · Aircraft © Airplanes.live · Satellite preview: deterministic simulation · Radar © RainViewer',
 } as const;
 
 const ja: Record<keyof typeof en, string> = {
@@ -107,6 +108,7 @@ const ja: Record<keyof typeof en, string> = {
   'search.empty': '読み込み済み範囲に航空機がありません',
   'controls.layers': 'レイヤー',
   'controls.flights': '航空機',
+  'controls.satellites': '衛星',
   'controls.weather': '気象',
   'controls.trails': '航跡',
   'controls.airports': '空港',
@@ -127,7 +129,7 @@ const ja: Record<keyof typeof en, string> = {
   'controls.satellite': '衛星写真',
   'controls.night': '夜景',
   'controls.space': 'Space Preview',
-  'controls.spaceBody': '航空機能の基盤を完成させた後、ライブ衛星データを再導入します。',
+  'controls.spaceBody': '決定論的な3D軌道プレビューです。視覚的に動きますが、ライブ観測データとしては表示しません。',
   'controls.mapControls': '地図操作',
   'controls.dayLighting': '昼の照明',
   'controls.nightLighting': '夜の照明',
@@ -135,7 +137,7 @@ const ja: Record<keyof typeof en, string> = {
   'controls.zoomOut': '縮小',
   'controls.resetView': '初期表示へ戻す',
   'controls.globe': '操作可能な3D地球儀',
-  'controls.tiltHint': 'Shift + ドラッグで傾斜',
+  'controls.tiltHint': 'Shift / Ctrl + ドラッグで3D回転',
   'flight.track': '航空機を追跡',
   'flight.stopTracking': '追跡を停止',
   'flight.dismiss': '閉じる',
@@ -151,7 +153,7 @@ const ja: Record<keyof typeof en, string> = {
   'weather.demo': 'デモ気象表現',
   'weather.live': 'RainViewerレーダー · {value}',
   'weather.unavailable': '気象レーダーは現在利用できません。',
-  'footer.attribution': '3Dエンジン © Cesium · 全球地形 © NASA GIBS · 画像 © Esri / CARTO / OpenInfraMap · 航空機 © Airplanes.live · レーダー © RainViewer',
+  'footer.attribution': '3Dエンジン © Cesium · 全球画像 © Natural Earth / Cesium · 詳細画像 © Esri / CARTO / OpenInfraMap · 航空機 © Airplanes.live · 衛星プレビュー: 決定論的シミュレーション · レーダー © RainViewer',
 };
 
 export type MessageKey = keyof typeof en;
