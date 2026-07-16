@@ -46,6 +46,7 @@ const en = {
   'controls.category': 'Type',
   'controls.dark': 'Dark',
   'controls.light': 'Light',
+  'controls.relief': 'Relief',
   'controls.satellite': 'Satellite',
   'controls.night': 'Night',
   'controls.space': 'Space Preview',
@@ -56,6 +57,8 @@ const en = {
   'controls.zoomIn': 'Zoom in',
   'controls.zoomOut': 'Zoom out',
   'controls.resetView': 'Reset view',
+  'controls.globe': 'Interactive 3D globe',
+  'controls.tiltHint': 'Shift + drag to tilt',
   'flight.track': 'Track aircraft',
   'flight.stopTracking': 'Stop tracking',
   'flight.dismiss': 'Dismiss',
@@ -71,7 +74,7 @@ const en = {
   'weather.demo': 'Stylized demo weather',
   'weather.live': 'RainViewer radar · {value}',
   'weather.unavailable': 'Weather radar is temporarily unavailable.',
-  'footer.attribution': 'Map data © OpenStreetMap contributors · Imagery © Esri / CARTO · Aircraft © Airplanes.live · Radar © RainViewer',
+  'footer.attribution': '3D engine © Cesium · Global relief © NASA GIBS · Imagery © Esri / CARTO / OpenInfraMap · Aircraft © Airplanes.live · Radar © RainViewer',
 } as const;
 
 const ja: Record<keyof typeof en, string> = {
@@ -120,6 +123,7 @@ const ja: Record<keyof typeof en, string> = {
   'controls.category': '機種',
   'controls.dark': 'ダーク',
   'controls.light': 'ライト',
+  'controls.relief': '地形',
   'controls.satellite': '衛星写真',
   'controls.night': '夜景',
   'controls.space': 'Space Preview',
@@ -130,6 +134,8 @@ const ja: Record<keyof typeof en, string> = {
   'controls.zoomIn': '拡大',
   'controls.zoomOut': '縮小',
   'controls.resetView': '初期表示へ戻す',
+  'controls.globe': '操作可能な3D地球儀',
+  'controls.tiltHint': 'Shift + ドラッグで傾斜',
   'flight.track': '航空機を追跡',
   'flight.stopTracking': '追跡を停止',
   'flight.dismiss': '閉じる',
@@ -145,7 +151,7 @@ const ja: Record<keyof typeof en, string> = {
   'weather.demo': 'デモ気象表現',
   'weather.live': 'RainViewerレーダー · {value}',
   'weather.unavailable': '気象レーダーは現在利用できません。',
-  'footer.attribution': '地図データ © OpenStreetMap contributors · 画像 © Esri / CARTO · 航空機 © Airplanes.live · レーダー © RainViewer',
+  'footer.attribution': '3Dエンジン © Cesium · 全球地形 © NASA GIBS · 画像 © Esri / CARTO / OpenInfraMap · 航空機 © Airplanes.live · レーダー © RainViewer',
 };
 
 export type MessageKey = keyof typeof en;

@@ -202,27 +202,7 @@ function pushOctahedron(
 }
 
 export function createAircraftGeometries() {
-  const airframeVertices: number[] = [];
-  const airframeNormals: number[] = [];
-  pushFuselage(airframeVertices, airframeNormals);
-
-  // Swept, slightly thick wings read clearly from both orbital and close views.
-  pushPrismXY(airframeVertices, airframeNormals, [
-    [-3.2, 8], [-34, -6], [-33, -10.5], [-3.5, -7.5],
-  ], -0.42, 0.48);
-  pushPrismXY(airframeVertices, airframeNormals, [
-    [3.2, 8], [3.5, -7.5], [33, -10.5], [34, -6],
-  ], -0.42, 0.48);
-
-  pushPrismXY(airframeVertices, airframeNormals, [
-    [-1.8, -17], [-13.5, -23], [-12.5, -26], [-1.4, -23.2],
-  ], 0.15, 0.75);
-  pushPrismXY(airframeVertices, airframeNormals, [
-    [1.8, -17], [1.4, -23.2], [12.5, -26], [13.5, -23],
-  ], 0.15, 0.75);
-  pushPrismYZ(airframeVertices, airframeNormals, [
-    [-16.5, 1.25], [-22.5, 10.5], [-27.5, 1.1],
-  ], -0.48, 0.48);
+  const {vertices: airframeVertices, normals: airframeNormals} = createAircraftMeshData();
 
   const engineVertices: number[] = [];
   const engineNormals: number[] = [];
@@ -265,6 +245,32 @@ export function createAircraftGeometries() {
     portLight: makeGeometry('aerogrid-aircraft-port-light', portLightVertices, portLightNormals),
     starboardLight: makeGeometry('aerogrid-aircraft-starboard-light', starboardLightVertices, starboardLightNormals),
   };
+}
+
+export function createAircraftMeshData() {
+  const airframeVertices: number[] = [];
+  const airframeNormals: number[] = [];
+  pushFuselage(airframeVertices, airframeNormals);
+
+  // Swept, slightly thick wings read clearly from both orbital and close views.
+  pushPrismXY(airframeVertices, airframeNormals, [
+    [-3.2, 8], [-34, -6], [-33, -10.5], [-3.5, -7.5],
+  ], -0.42, 0.48);
+  pushPrismXY(airframeVertices, airframeNormals, [
+    [3.2, 8], [3.5, -7.5], [33, -10.5], [34, -6],
+  ], -0.42, 0.48);
+
+  pushPrismXY(airframeVertices, airframeNormals, [
+    [-1.8, -17], [-13.5, -23], [-12.5, -26], [-1.4, -23.2],
+  ], 0.15, 0.75);
+  pushPrismXY(airframeVertices, airframeNormals, [
+    [1.8, -17], [1.4, -23.2], [12.5, -26], [13.5, -23],
+  ], 0.15, 0.75);
+  pushPrismYZ(airframeVertices, airframeNormals, [
+    [-16.5, 1.25], [-22.5, 10.5], [-27.5, 1.1],
+  ], -0.48, 0.48);
+
+  return {vertices: airframeVertices, normals: airframeNormals};
 }
 
 export function createAircraftGeometry() {

@@ -1,20 +1,18 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 import type { AppMode, FlightRecord, RadiusCoverage } from '../shared/contracts';
 import { AtlasHeader } from './components/AtlasHeader';
 import { ControlDock } from './components/ControlDock';
-import { EarthMap, type ColorMode } from './components/Map';
+import { ControlPanel } from './components/ControlPanel';
+import { EarthMap, type ColorMode, type GlobeViewState, type MapStyle } from './components/Map';
 import { FlightInfoPanel } from './components/FlightInfoPanel';
 import { SearchBar } from './components/SearchBar';
 import { WelcomeDialog } from './components/WelcomeDialog';
-import type { GlobeViewState } from './components/camera/useAdvancedGlobeCamera';
-import type { MapStyle } from './components/layers/basemapLayer';
 import { useAtlasData } from './hooks/useAtlasData';
 import { translate, type Locale } from './i18n';
 import { DEFAULT_LAYERS, type LayerKey, type LayerVisibility } from './types/layers';
 import { QUALITY_PRESETS } from './types/quality';
 
-const LazyControlPanel = lazy(() => import('./components/ControlPanel').then((module) => ({ default: module.ControlPanel })));
 const INITIAL_CENTER = { latitude: 35.68, longitude: 139.76 };
 
 function storedMode(): AppMode | null {
@@ -158,8 +156,7 @@ export function App() {
       </AnimatePresence>
 
       {panelOpen && mode && (
-        <Suspense fallback={<div className="panel-loading" aria-live="polite">…</div>}>
-          <LazyControlPanel
+          <ControlPanel
             mode={mode}
             locale={locale}
             colorMode={colorMode}
@@ -174,7 +171,6 @@ export function App() {
             onClose={() => setPanelOpen(false)}
             t={t}
           />
-        </Suspense>
       )}
 
       {mode && (
