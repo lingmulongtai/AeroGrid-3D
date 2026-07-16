@@ -82,6 +82,8 @@ describe('AeroGrid REST API', () => {
         'x-frame-options': 'DENY',
       });
       expect(apiResponse.headers['content-security-policy']).toContain("frame-ancestors 'none'");
+      expect(apiResponse.headers['content-security-policy']).toContain("script-src 'self' 'unsafe-eval'");
+      expect(apiResponse.headers['content-security-policy']).toContain("worker-src 'self' blob:");
       expect(apiResponse.headers['x-request-id']).toEqual(expect.any(String));
 
       const assetResponse = await request(app).get('/assets/app-ABC123.js').expect(200);
