@@ -1,6 +1,6 @@
 import { PathLayer } from '@deck.gl/layers';
 import { SimpleMeshLayer } from '@deck.gl/mesh-layers';
-import type { Flight } from '../../hooks/useFlightData';
+import type { FlightRecord } from '../../../shared/contracts';
 import { getFlightColor, getCategoryScale } from '../../utils/flightUtils';
 import { createAircraftGeometry } from './modelGeometries';
 
@@ -12,16 +12,16 @@ export function createFlightLayers({
   showTrails,
   onFlightClick,
 }: {
-  flights: Flight[];
+  flights: FlightRecord[];
   colorMode: 'altitude' | 'speed' | 'category';
   showTrails: boolean;
-  onFlightClick: (f: Flight) => void;
+  onFlightClick: (f: FlightRecord) => void;
 }) {
   const layers: any[] = [];
 
   if (showTrails) {
     layers.push(
-      new PathLayer<Flight>({
+      new PathLayer<FlightRecord>({
         id: 'flight-trails',
         data: flights.filter((f) => f.positionHistory.length > 1),
         getPath: (d) => d.positionHistory as [number, number, number][],
@@ -37,7 +37,7 @@ export function createFlightLayers({
   }
 
   layers.push(
-    new SimpleMeshLayer<Flight>({
+    new SimpleMeshLayer<FlightRecord>({
       id: 'aircraft-models',
       data: flights,
       mesh: AIRCRAFT_GEOMETRY,

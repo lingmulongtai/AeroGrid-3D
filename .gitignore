@@ -1,13 +1,16 @@
 node_modules/
 build/
 dist/
+server-dist/
 coverage/
+test-results/
+playwright-report/
 .DS_Store
 *.log
 .env*
 !.env.example
 
-# SQLite database (server writes to data/)
+# Legacy local database artifacts are not part of the REST-only runtime.
 data/*.db
 data/*.db-shm
 data/*.db-wal

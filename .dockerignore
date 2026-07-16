@@ -1,12 +1,14 @@
 node_modules
 dist
+server-dist
 .git
 .env
 .DS_Store
 *.log
 coverage
+docs/screenshots
+test-results
+playwright-report
 data
 .vscode
 .idea
-docker-compose.yml
-server/sql

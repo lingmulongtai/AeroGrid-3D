@@ -4,7 +4,6 @@ export type QualitySettings = {
   preset: QualityPreset;
   dpr: number;
   maxFlights: number;
-  maxSatellites: number;
   weatherParticles: number;
   globeResolution: number;
   tileCacheScale: number;
@@ -14,27 +13,24 @@ export const QUALITY_PRESETS: Record<QualityPreset, QualitySettings> = {
   low: {
     preset: 'low',
     dpr: 1.0,
-    maxFlights: 1200,
-    maxSatellites: 300,
-    weatherParticles: 2400,
+    maxFlights: 800,
+    weatherParticles: 800,
     globeResolution: 3,
     tileCacheScale: 0.8,
   },
   medium: {
     preset: 'medium',
     dpr: 1.8,
-    maxFlights: 2200,
-    maxSatellites: 900,
-    weatherParticles: 7000,
+    maxFlights: 2000,
+    weatherParticles: 1800,
     globeResolution: 1,
     tileCacheScale: 1.2,
   },
   high: {
     preset: 'high',
     dpr: 2.0,
-    maxFlights: 3000,
-    maxSatellites: 2500,
-    weatherParticles: 10000,
+    maxFlights: 2400,
+    weatherParticles: 2600,
     globeResolution: 1,
     tileCacheScale: 1.4,
   },
