@@ -74,7 +74,7 @@ test('zoom changes camera height without a projection jump', async ({ page }) =>
   await expect(map).toHaveAttribute('data-polar-coverage', 'full');
 });
 
-test('Shift + drag tilts the 3D camera', async ({page, isMobile}) => {
+test('Shift and Ctrl + drag orbit around a stable 3D ground anchor', async ({page, isMobile}) => {
   test.skip(isMobile, 'Desktop keyboard gesture');
   await page.goto('/');
   await page.getByRole('button', {name: /Global Demo/}).click();
@@ -93,6 +93,16 @@ test('Shift + drag tilts the 3D camera', async ({page, isMobile}) => {
   await page.keyboard.up('Shift');
 
   await expect.poll(async () => Number(await map.getAttribute('data-pitch'))).not.toBe(initialPitch);
+
+  const headingAfterTilt = Number(await map.getAttribute('data-heading'));
+  await page.keyboard.down('Control');
+  await page.mouse.move(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.68, box!.y + box!.height * 0.5, {steps: 12});
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+
+  await expect.poll(async () => Number(await map.getAttribute('data-heading'))).not.toBe(headingAfterTilt);
 });
 
 test('Live Beta failure is explicit and never replaced with demo aircraft', async ({ page }) => {

@@ -16,6 +16,7 @@ import {MapControls} from './MapControls';
 import {
   configureEarthCamera,
   INITIAL_CAMERA,
+  installEarthOrbitControls,
   readEarthCamera,
   resetEarthCamera,
   type GlobeViewState,
@@ -95,6 +96,7 @@ export function EarthMap({
 
     const {scene} = nextViewer;
     configureEarthCamera(nextViewer);
+    const removeOrbitControls = installEarthOrbitControls(nextViewer);
     scene.globe.depthTestAgainstTerrain = true;
     scene.globe.showGroundAtmosphere = true;
     scene.globe.baseColor = Color.fromCssColorString('#02050a');
@@ -139,6 +141,7 @@ export function EarthMap({
 
     return () => {
       cancelled = true;
+      removeOrbitControls();
       nextViewer.camera.moveEnd.removeEventListener(updateCameraState);
       setViewer(null);
       nextViewer.destroy();
