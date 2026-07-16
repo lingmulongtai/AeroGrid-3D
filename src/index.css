@@ -48,12 +48,35 @@ button:focus-visible, input:focus-visible {
 }
 
 .map-surface { position: absolute; inset: 0; }
+.cesium-container { position: absolute; inset: 0; }
+.cesium-container .cesium-viewer,
+.cesium-container .cesium-viewer-cesiumWidgetContainer,
+.cesium-container .cesium-widget,
+.cesium-container canvas { width: 100%; height: 100%; }
+.cesium-container canvas { outline: none; }
+.cesium-viewer-bottom { display: none; }
 .globe-vignette {
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
   background: linear-gradient(180deg, rgba(0, 7, 16, 0.4), transparent 25%, transparent 70%, rgba(0, 4, 10, 0.52));
+}
+.camera-hint {
+  position: absolute;
+  z-index: 3;
+  right: 76px;
+  bottom: 76px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 8px;
+  color: rgba(230, 241, 252, .72);
+  background: rgba(4, 10, 18, .62);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .025em;
+  pointer-events: none;
+  backdrop-filter: blur(10px);
 }
 
 .atlas-header {
@@ -343,9 +366,6 @@ button:focus-visible, input:focus-visible {
 .experience-card em { margin-top: auto; color: var(--accent-strong); font-size: 10px; font-style: normal; font-weight: 800; }
 .experience-card-live .experience-icon { color: #77f4b9; background: rgba(59,226,160,.12); }
 
-.panel-loading { position: absolute; z-index: 50; left: 22px; top: 88px; padding: 12px; }
-.deck-tooltip-content { white-space: pre-line; font: 11px/1.5 ui-monospace, monospace; }
-
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes panel-in { from { opacity: 0; transform: translateY(8px); } }
 
@@ -359,6 +379,7 @@ button:focus-visible, input:focus-visible {
   .atlas-search { top: 60px; left: 10px; width: calc(100vw - 20px); }
   .search-input-wrap { height: 42px; }
   .map-controls { top: 47%; right: 10px; }
+  .camera-hint { display: none; }
   .control-dock { bottom: 36px; width: calc(100vw - 20px); justify-content: center; padding: 5px; }
   .control-dock button { flex: 1 1 0; justify-content: center; min-width: 0; padding: 0; }
   .control-dock button span { display: none; }

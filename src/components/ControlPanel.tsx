@@ -1,8 +1,7 @@
 import { RefreshCw, Rocket, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { AppMode } from '../../shared/contracts';
-import type { ColorMode } from './Map';
-import type { MapStyle } from './layers/basemapLayer';
+import type { ColorMode, MapStyle } from './Map';
 import type { Locale, Translator } from '../i18n';
 
 interface ControlPanelProps {
@@ -46,7 +45,7 @@ export function ControlPanel({
 
       <PanelGroup label={t('controls.map')}>
         <Segmented options={[
-          ['dark', t('controls.dark')], ['opengrid', t('controls.light')],
+          ['dark', t('controls.dark')], ['opengrid', t('controls.relief')],
           ['satellite', t('controls.satellite')], ['night', t('controls.night')],
         ]} value={mapStyle} onChange={(value) => onMapStyleChange(value as MapStyle)} />
       </PanelGroup>
