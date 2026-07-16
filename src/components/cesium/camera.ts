@@ -170,6 +170,10 @@ export function installEarthOrbitControls(viewer: Viewer) {
     // Leave the temporary ENU frame without changing the world-space view.
     viewer.camera.lookAtTransform(Matrix4.IDENTITY);
     canvas.classList.remove('is-orbiting');
+    // Custom lookAt updates do not consistently emit Cesium's moveEnd event.
+    // Notify view-state subscribers so controls, LOD, and imagery selection
+    // immediately reflect the completed Shift/Ctrl orbit.
+    viewer.camera.moveEnd.raiseEvent();
     viewer.scene.requestRender();
   };
 
