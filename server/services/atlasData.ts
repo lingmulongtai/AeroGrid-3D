@@ -6,6 +6,7 @@ import type {
   SourceStatus,
   WeatherFrame,
 } from '../../shared/contracts.js';
+import { APP_VERSION } from '../../shared/contracts.js';
 import { ExpiringCache } from '../lib/cache.js';
 import { DailyQuota } from '../lib/quota.js';
 import { AirplanesLiveProvider } from '../providers/airplanesLive.js';
@@ -34,6 +35,7 @@ interface AtlasDataDependencies {
   weatherProvider?: Pick<RainViewerProvider, 'fetchWeather'>;
   quota?: DailyQuota;
   now?: () => number;
+  revision?: string;
 }
 
 function initialHealth(source: string): SourceHealth {
@@ -68,6 +70,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
   const weatherProvider = dependencies.weatherProvider ?? new RainViewerProvider();
   const quota = dependencies.quota ?? new DailyQuota(DAILY_FLIGHT_REQUEST_LIMIT);
   const now = dependencies.now ?? Date.now;
+  const revision = dependencies.revision;
   const flightCache = new ExpiringCache<DataSnapshot<FlightRecord>>();
   const weatherCache = new ExpiringCache<DataSnapshot<WeatherFrame>>();
   const inFlightRequests = new Map<string, Promise<DataSnapshot<FlightRecord>>>();
@@ -238,6 +241,8 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
   function getStatus(): AtlasStatus {
     return {
       service: 'aerogrid-3d',
+      version: APP_VERSION,
+      ...(revision ? { revision } : {}),
       status: flightHealth.status === 'available' || weatherHealth.status === 'available' ? 'ok' : 'degraded',
       time: new Date(now()).toISOString(),
       sources: { flights: flightHealth, weather: weatherHealth },

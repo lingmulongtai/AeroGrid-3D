@@ -1,4 +1,5 @@
 import express, { type Express } from 'express';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AtlasDataService } from './services/atlasData.js';
@@ -16,9 +17,32 @@ function parseNumber(value: unknown): number {
 export function createApp({ dataService, staticDir, logger }: AppOptions): Express {
   const app = express();
   app.disable('x-powered-by');
+  app.use((_req, res, next) => {
+    res.setHeader('Content-Security-Policy', [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "connect-src 'self' https:",
+      "font-src 'self' data:",
+      "form-action 'none'",
+      "frame-ancestors 'none'",
+      "img-src 'self' data: blob: https:",
+      "object-src 'none'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "worker-src 'self' blob:",
+    ].join('; '));
+    res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=()');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    next();
+  });
   if (logger) {
     app.use((req, res, next) => {
       const startedAt = performance.now();
+      const requestId = randomUUID();
+      res.setHeader('X-Request-Id', requestId);
       res.on('finish', () => logger({
         level: res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
         event: 'http.request',
@@ -26,6 +50,7 @@ export function createApp({ dataService, staticDir, logger }: AppOptions): Expre
         path: req.path,
         status: res.statusCode,
         durationMs: Math.round(performance.now() - startedAt),
+        requestId,
       }));
       next();
     });
@@ -69,12 +94,21 @@ export function createApp({ dataService, staticDir, logger }: AppOptions): Expre
   });
 
   if (staticDir && fs.existsSync(staticDir)) {
-    app.use(express.static(staticDir, { maxAge: '1h', index: false }));
+    app.use(express.static(staticDir, {
+      index: false,
+      setHeaders: (res, filePath) => {
+        const isHashedAsset = filePath.includes(`${path.sep}assets${path.sep}`);
+        res.setHeader('Cache-Control', isHashedAsset
+          ? 'public, max-age=31536000, immutable'
+          : 'public, max-age=3600');
+      },
+    }));
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api/')) {
         next();
         return;
       }
+      res.setHeader('Cache-Control', 'no-store');
       res.sendFile(path.join(staticDir, 'index.html'));
     });
   }
