@@ -3,6 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "concurrently -n api,web -c cyan,yellow \"npm run server:dev\" \"npm run dev:client\"",
     "dev:client": "vite --port=3000 --host=0.0.0.0",
@@ -22,6 +26,9 @@
     "start": "node server-dist/server/index.js"
   },
   "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
     "@deck.gl/core": "^9.3.1",
     "@deck.gl/geo-layers": "^9.3.1",
     "@deck.gl/layers": "^9.3.1",
@@ -29,16 +36,10 @@
     "@deck.gl/react": "^9.3.1",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
-    "express": "^4.21.2",
     "lucide-react": "^0.546.0",
-    "maplibre-gl": "^5.23.0",
     "motion": "^12.23.24",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-map-gl": "^8.1.1",
-    "vite": "^6.2.0"
-  },
-  "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -47,7 +48,6 @@
     "@types/node": "^22.14.0",
     "@types/supertest": "^7.2.1",
     "@vitest/coverage-v8": "^4.1.10",
-    "autoprefixer": "^10.4.21",
     "concurrently": "^9.1.2",
     "jsdom": "^29.1.1",
     "supertest": "^7.2.2",
