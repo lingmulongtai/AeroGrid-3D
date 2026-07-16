@@ -74,6 +74,8 @@ npm audit
 
 `npm run check` runs TypeScript, Vitest, and the full production build. Pull requests run all of the checks above in GitHub Actions, including Playwright.
 
+Release history is maintained in [CHANGELOG.md](CHANGELOG.md). Please report suspected vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
 ## Production
 
 Build and run the compiled same-origin service:
@@ -95,4 +97,4 @@ The multi-stage `Dockerfile` runs as the unprivileged `node` user and health-che
 
 ## License
 
-MIT. Third-party data remains subject to each provider's terms and attribution requirements.
+[MIT](LICENSE). Third-party data remains subject to each provider's terms and attribution requirements.
