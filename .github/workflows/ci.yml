@@ -47,3 +47,22 @@ jobs:
           name: playwright-results
           path: test-results
           retention-days: 7
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production container
+        run: docker build --pull --tag aerogrid-3d:ci .
+      - name: Verify health and release metadata
+        run: |
+          docker run --detach --name aerogrid-3d-ci --publish 8080:8080 aerogrid-3d:ci
+          trap 'docker logs aerogrid-3d-ci' EXIT
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8080/api/v1/status > status.json; then
+              break
+            fi
+            sleep 1
+          done
+          node -e "const fs=require('fs');const pkg=require('./package.json');const status=JSON.parse(fs.readFileSync('status.json','utf8'));if(status.version!==pkg.version)throw new Error('Container version mismatch');"
+          test "$(docker inspect --format='{{.Config.User}}' aerogrid-3d-ci)" = "node"
