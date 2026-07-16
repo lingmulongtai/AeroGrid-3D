@@ -8,9 +8,16 @@ import type { LayerVisibility } from '../types/layers';
 import type { QualitySettings } from '../types/quality';
 import type { Translator } from '../i18n';
 import { MapControls } from './MapControls';
-import { useAdvancedGlobeCamera, type GlobeViewState } from './camera/useAdvancedGlobeCamera';
+import {
+  MAX_GLOBE_ZOOM,
+  MIN_GLOBE_ZOOM,
+  getAdaptiveGlobeResolution,
+  normalizeGlobeViewState,
+  zoomGlobeView,
+  type GlobeViewState,
+} from './camera/useAdvancedGlobeCamera';
 import { createAirportLayers } from './layers/airportLayer';
-import { createBasemapLayer, createWeatherTileLayer, type MapStyle } from './layers/basemapLayer';
+import { createBasemapLayers, createWeatherTileLayer, type MapStyle } from './layers/basemapLayer';
 import { createFlightLayers } from './layers/flightLayers';
 import { createSpaceLayers } from './layers/spaceLayers';
 import { createWeatherParticleLayer, createWeatherParticles } from './layers/weatherParticleLayer';
@@ -19,8 +26,8 @@ const INITIAL_VIEW_STATE: GlobeViewState = {
   longitude: 139.76,
   latitude: 35.68,
   zoom: 1.35,
-  pitch: 8,
-  bearing: 0,
+  minZoom: MIN_GLOBE_ZOOM,
+  maxZoom: MAX_GLOBE_ZOOM,
 };
 
 export type ColorMode = 'altitude' | 'speed' | 'category';
@@ -45,7 +52,8 @@ interface MapProps {
 function createLighting(nightMode: boolean) {
   return new LightingEffect({
     ambient: new AmbientLight({ color: [210, 225, 255], intensity: nightMode ? 0.28 : 0.72 }),
-    directional: new DirectionalLight({ color: [255, 245, 220], intensity: nightMode ? 0.55 : 1.55, direction: [-1, -3, -1] }),
+    key: new DirectionalLight({ color: [255, 245, 220], intensity: nightMode ? 0.55 : 1.45, direction: [-1, -3, -1] }),
+    rim: new DirectionalLight({ color: [120, 205, 255], intensity: nightMode ? 0.7 : 0.42, direction: [2, 1, 0.5] }),
   });
 }
 
@@ -56,13 +64,12 @@ export function EarthMap({
 }: MapProps) {
   const [viewState, setViewState] = useState<GlobeViewState>(INITIAL_VIEW_STATE);
   const [nightLighting, setNightLighting] = useState(false);
-  const cameraHandlers = useAdvancedGlobeCamera(viewState, setViewState);
 
   useEffect(() => onViewStateChange(viewState), [onViewStateChange, viewState]);
 
   useEffect(() => {
     if (!trackedFlight) return;
-    setViewState((previous) => ({
+    setViewState((previous) => normalizeGlobeViewState({
       ...previous,
       longitude: trackedFlight.longitude,
       latitude: trackedFlight.latitude,
@@ -76,19 +83,30 @@ export function EarthMap({
     [mode, quality.weatherParticles],
   );
   const view = useMemo(
-    () => new GlobeView({ id: 'globe', resolution: quality.globeResolution, nearZMultiplier: 0.02, farZMultiplier: 100 }),
-    [quality.globeResolution],
+    () => new GlobeView({
+      id: 'globe',
+      resolution: getAdaptiveGlobeResolution(viewState.zoom, quality.globeResolution),
+      nearZMultiplier: 0.1,
+      farZMultiplier: 4,
+    }),
+    [quality.globeResolution, viewState.zoom],
   );
   const lighting = useMemo(() => createLighting(nightLighting), [nightLighting]);
 
   const renderedLayers = useMemo(() => {
-    const result: unknown[] = [...createSpaceLayers(), createBasemapLayer(mapStyle, quality)];
+    const result: unknown[] = [...createSpaceLayers(), ...createBasemapLayers(mapStyle, quality)];
     if (layers.weather && mode === 'live-beta' && radarTileUrl) {
       result.push(createWeatherTileLayer(radarTileUrl, weatherOpacity, onWeatherTileError));
     }
     if (layers.weather && mode === 'demo') result.push(createWeatherParticleLayer(weatherParticles));
     if (layers.airports) result.push(...createAirportLayers(MAJOR_AIRPORTS, layers.labels));
-    if (layers.flights) result.push(...createFlightLayers({ flights: visibleFlights, colorMode, showTrails: layers.flightTrails, onFlightClick }));
+    if (layers.flights) result.push(...createFlightLayers({
+      flights: visibleFlights,
+      colorMode,
+      showTrails: layers.flightTrails,
+      zoom: viewState.zoom,
+      onFlightClick,
+    }));
     if (selectedFlight) {
       result.push(new ScatterplotLayer<FlightRecord>({
         id: 'selected-flight', data: [selectedFlight],
@@ -98,7 +116,7 @@ export function EarthMap({
       }));
     }
     return result;
-  }, [colorMode, layers, mapStyle, mode, onFlightClick, onWeatherTileError, quality, radarTileUrl, selectedFlight, visibleFlights, weatherOpacity, weatherParticles]);
+  }, [colorMode, layers, mapStyle, mode, onFlightClick, onWeatherTileError, quality, radarTileUrl, selectedFlight, viewState.zoom, visibleFlights, weatherOpacity, weatherParticles]);
 
   const tooltip = ({ object }: { object?: FlightRecord }) => object ? {
     text: `${object.callsign}\n${Math.round(object.velocity * 1.94384)} kt · ${Math.round(object.altitude * 3.28084).toLocaleString()} ft`,
@@ -106,15 +124,27 @@ export function EarthMap({
   } : null;
 
   return (
-    <div className="map-surface" data-mode={mode}>
+    <div
+      className="map-surface"
+      data-mode={mode}
+      data-zoom={viewState.zoom.toFixed(3)}
+      data-longitude={viewState.longitude.toFixed(5)}
+      data-latitude={viewState.latitude.toFixed(5)}
+    >
       <DeckGL
         views={view}
         viewState={viewState}
-        controller={{ inertia: true, dragRotate: true, doubleClickZoom: false, keyboard: true }}
-        onViewStateChange={({ viewState: next }: { viewState: GlobeViewState }) => setViewState(next)}
-        onDragStart={cameraHandlers.onDragStart}
-        onDrag={cameraHandlers.onDrag}
-        onDragEnd={cameraHandlers.onDragEnd}
+        controller={{
+          inertia: 250,
+          dragRotate: false,
+          touchRotate: false,
+          doubleClickZoom: false,
+          scrollZoom: { speed: 0.008, smooth: true },
+          keyboard: true,
+        }}
+        onViewStateChange={({ viewState: next }: { viewState: GlobeViewState }) => {
+          setViewState(normalizeGlobeViewState(next));
+        }}
         layers={renderedLayers as never[]}
         effects={[lighting]}
         useDevicePixels={Math.min(window.devicePixelRatio || 1, quality.dpr)}
@@ -123,8 +153,8 @@ export function EarthMap({
       />
       <div className="globe-vignette" aria-hidden="true" />
       <MapControls
-        onZoomIn={() => setViewState((previous) => ({ ...previous, zoom: Math.min(previous.zoom + 0.8, 12) }))}
-        onZoomOut={() => setViewState((previous) => ({ ...previous, zoom: Math.max(previous.zoom - 0.8, 0.5) }))}
+        onZoomIn={() => setViewState((previous) => zoomGlobeView(previous, 0.8))}
+        onZoomOut={() => setViewState((previous) => zoomGlobeView(previous, -0.8))}
         onResetView={() => setViewState(INITIAL_VIEW_STATE)}
         nightMode={nightLighting}
         onToggleNight={() => setNightLighting((value) => !value)}
