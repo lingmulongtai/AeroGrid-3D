@@ -4,6 +4,9 @@ import {
   Cartesian3,
   Color,
   EllipsoidTerrainProvider,
+  HeadingPitchRange,
+  Matrix4,
+  Math as CesiumMath,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
   Viewer,
@@ -16,12 +19,25 @@ import {MapControls} from './MapControls';
 import {
   configureEarthCamera,
   INITIAL_CAMERA,
+  installEarthOrbitControls,
   readEarthCamera,
   resetEarthCamera,
   type GlobeViewState,
 } from './cesium/camera';
-import {addWeatherLayer, applyMapStyle, type MapStyle} from './cesium/imagery';
-import {installFlightSelection, installSceneContent} from './cesium/sceneContent';
+import {
+  addWeatherLayer,
+  applyMapStyle,
+  mapStyleForView,
+  POLAR_BASEMAP_LATITUDE,
+  type MapStyle,
+} from './cesium/imagery';
+import {
+  aircraftLodForHeight,
+  installFlightSelection,
+  installSatellitePreview,
+  installSceneContent,
+} from './cesium/sceneContent';
+import {terrainModeForView, type TerrainMode} from './cesium/terrain';
 
 export type ColorMode = 'altitude' | 'speed' | 'category';
 export type {GlobeViewState, MapStyle};
@@ -43,7 +59,7 @@ interface MapProps {
   t: Translator;
 }
 
-type TerrainState = 'loading' | 'terrain' | 'ellipsoid';
+type TerrainState = 'loading' | TerrainMode;
 
 const TERRAIN_URL =
   'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer';
@@ -70,6 +86,11 @@ export function EarthMap({
     () => flights.slice(0, quality.maxFlights),
     [flights, quality.maxFlights],
   );
+  const effectiveMapStyle = mapStyleForView(
+    mapStyle,
+    cameraState.latitude,
+    cameraState.height,
+  );
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -94,10 +115,18 @@ export function EarthMap({
     });
 
     const {scene} = nextViewer;
+    const ellipsoidTerrain = nextViewer.terrainProvider;
+    let detailedTerrain: ArcGISTiledElevationTerrainProvider | null = null;
+    let activeTerrainMode: TerrainMode = 'ellipsoid';
     configureEarthCamera(nextViewer);
+    const removeOrbitControls = installEarthOrbitControls(nextViewer);
     scene.globe.depthTestAgainstTerrain = true;
-    scene.globe.showGroundAtmosphere = true;
-    scene.globe.baseColor = Color.fromCssColorString('#02050a');
+    // Cesium's ground-atmosphere shader produces a circular pole singularity
+    // on the WGS84 ellipsoid in high orbital views. The sky atmosphere still
+    // provides the blue limb without painting a grey disc onto Antarctica.
+    scene.globe.showGroundAtmosphere = false;
+    scene.globe.baseColor = Color.fromCssColorString('#15394a');
+    scene.globe.showSkirts = true;
     scene.fog.enabled = true;
     scene.fog.density = 0.00012;
     scene.postProcessStages.fxaa.enabled = true;
@@ -106,6 +135,18 @@ export function EarthMap({
     const updateCameraState = () => {
       if (nextViewer.isDestroyed()) return;
       const state = readEarthCamera(nextViewer);
+      const nextTerrainMode = terrainModeForView({
+        height: state.height,
+        latitude: state.latitude,
+        detailedTerrainAvailable: detailedTerrain !== null,
+      });
+      if (nextTerrainMode !== activeTerrainMode) {
+        activeTerrainMode = nextTerrainMode;
+        nextViewer.terrainProvider = nextTerrainMode === 'terrain'
+          ? detailedTerrain!
+          : ellipsoidTerrain;
+        setTerrainState(nextTerrainMode);
+      }
       setCameraState(state);
       onViewStateChange(state);
     };
@@ -128,8 +169,8 @@ export function EarthMap({
       ArcGISTiledElevationTerrainProvider.fromUrl(TERRAIN_URL)
         .then((terrainProvider) => {
           if (cancelled || nextViewer.isDestroyed()) return;
-          nextViewer.terrainProvider = terrainProvider;
-          setTerrainState('terrain');
+          detailedTerrain = terrainProvider;
+          updateCameraState();
           scene.requestRender();
         })
         .catch(() => {
@@ -139,6 +180,7 @@ export function EarthMap({
 
     return () => {
       cancelled = true;
+      removeOrbitControls();
       nextViewer.camera.moveEnd.removeEventListener(updateCameraState);
       setViewer(null);
       nextViewer.destroy();
@@ -148,11 +190,11 @@ export function EarthMap({
   useEffect(() => {
     if (!viewer) return;
     let cancelled = false;
-    applyMapStyle(viewer, mapStyle, E2E_OFFLINE_GLOBE).catch(() => {
+    applyMapStyle(viewer, effectiveMapStyle, E2E_OFFLINE_GLOBE).catch(() => {
       if (!cancelled && !viewer.isDestroyed()) applyMapStyle(viewer, 'opengrid', E2E_OFFLINE_GLOBE).catch(() => undefined);
     });
     return () => { cancelled = true; };
-  }, [mapStyle, viewer]);
+  }, [effectiveMapStyle, viewer]);
 
   useEffect(() => {
     if (!viewer || !layers.weather || mode !== 'live-beta' || !radarTileUrl) return;
@@ -170,8 +212,15 @@ export function EarthMap({
       showAirports: layers.airports,
       showLabels: layers.labels,
       cameraHeight: cameraState.height,
+      maximumDetailedAircraft: quality.maxAircraftModels,
+      selectedFlightId: selectedFlight?.id ?? null,
     });
-  }, [cameraState.height, colorMode, layers, viewer, visibleFlights]);
+  }, [cameraState.height, colorMode, layers, quality.maxAircraftModels, selectedFlight?.id, viewer, visibleFlights]);
+
+  useEffect(() => {
+    if (!viewer || !layers.satellites || cameraState.height < 900_000) return;
+    return installSatellitePreview(viewer, cameraState.height);
+  }, [cameraState.height, layers.satellites, viewer]);
 
   useEffect(() => {
     if (!viewer) return;
@@ -197,17 +246,34 @@ export function EarthMap({
   const trackedFlightId = trackedFlight?.id ?? null;
   useEffect(() => {
     if (!viewer || !trackedFlight) return;
-    viewer.camera.flyTo({
-      destination: Cartesian3.fromDegrees(
+    const target = Cartesian3.fromDegrees(
         trackedFlight.longitude,
         trackedFlight.latitude,
-        Math.max(90_000, viewer.camera.positionCartographic.height * 0.72),
+        Math.max(20, trackedFlight.altitude),
+      );
+    viewer.camera.lookAt(
+      target,
+      new HeadingPitchRange(
+        CesiumMath.toRadians(trackedFlight.heading + 180),
+        CesiumMath.toRadians(-22),
+        18_000,
       ),
-      duration: 0.9,
-    });
-  // Tracking updates the camera when the user starts tracking a new aircraft.
-  // Position refreshes must not restart the fly-to animation every second.
-  }, [trackedFlightId, viewer]);
+    );
+    // Cesium's local target frame is useful for computing the view, but the
+    // standard Earth controls expect the global frame afterwards.
+    viewer.camera.lookAtTransform(Matrix4.IDENTITY);
+    viewer.scene.requestRender();
+    // Tracking is a lock, so follow each position update without replaying an
+    // animated fly-to that would fight the user's camera every second.
+  }, [
+    terrainState,
+    trackedFlight?.altitude,
+    trackedFlight?.heading,
+    trackedFlight?.latitude,
+    trackedFlight?.longitude,
+    trackedFlightId,
+    viewer,
+  ]);
 
   const zoomCamera = (inward: boolean) => {
     if (!viewer) return;
@@ -227,7 +293,22 @@ export function EarthMap({
       data-engine="cesium"
       data-mode={mode}
       data-polar-coverage="full"
+      data-basemap-coverage={effectiveMapStyle === 'satellite-global'
+        ? 'global-detail'
+        : effectiveMapStyle === mapStyle
+          ? 'detail'
+          : Math.abs(cameraState.latitude) >= POLAR_BASEMAP_LATITUDE
+            ? 'polar-safe'
+            : 'orbital-safe'}
       data-terrain={terrainState}
+      data-aircraft-lod={aircraftLodForHeight(cameraState.height)}
+      data-satellite-render-mode={layers.satellites
+        ? cameraState.height >= 900_000 ? 'models' : 'hidden-atmosphere'
+        : 'hidden'}
+      data-satellite-count={layers.satellites ? 18 : 0}
+      data-selected-aircraft-model={Boolean(
+        selectedFlight && cameraState.height < 12_000_000,
+      )}
       data-zoom={cameraState.zoom.toFixed(3)}
       data-camera-height={cameraState.height.toFixed(0)}
       data-longitude={cameraState.longitude.toFixed(5)}

@@ -25,6 +25,9 @@ test('Demo stays separate and supports the primary exploration flow', async ({ p
 
   await expect(page.getByText('DEMO', { exact: true })).toBeVisible();
   await expect(page.getByText(/Deterministic simulation/)).toBeVisible();
+  const map = page.locator('.map-surface');
+  await expect(map).toHaveAttribute('data-satellite-render-mode', 'models');
+  await expect(map).toHaveAttribute('data-satellite-count', '18');
   await page.getByRole('combobox').fill('JAL');
   const firstAircraft = page.getByRole('option').first();
   await expect(firstAircraft).toBeVisible();
@@ -32,6 +35,9 @@ test('Demo stays separate and supports the primary exploration flow', async ({ p
   await expect(page.getByRole('button', { name: 'Track aircraft' })).toBeVisible();
   await page.getByRole('button', { name: 'Track aircraft' }).evaluate((button: HTMLButtonElement) => button.click());
   await expect(page.getByRole('button', { name: 'Stop tracking' })).toBeVisible();
+  await expect.poll(async () => map.getAttribute('data-aircraft-lod')).toBe('models');
+  await expect(map).toHaveAttribute('data-selected-aircraft-model', 'true');
+  await expect(map).toHaveAttribute('data-satellite-render-mode', 'hidden-atmosphere');
 
   await expectHealthyPage(page);
   expect(pageErrors).toEqual([]);
@@ -74,7 +80,7 @@ test('zoom changes camera height without a projection jump', async ({ page }) =>
   await expect(map).toHaveAttribute('data-polar-coverage', 'full');
 });
 
-test('Shift + drag tilts the 3D camera', async ({page, isMobile}) => {
+test('Shift and Ctrl + drag orbit around a stable 3D ground anchor', async ({page, isMobile}) => {
   test.skip(isMobile, 'Desktop keyboard gesture');
   await page.goto('/');
   await page.getByRole('button', {name: /Global Demo/}).click();
@@ -93,6 +99,16 @@ test('Shift + drag tilts the 3D camera', async ({page, isMobile}) => {
   await page.keyboard.up('Shift');
 
   await expect.poll(async () => Number(await map.getAttribute('data-pitch'))).not.toBe(initialPitch);
+
+  const headingAfterTilt = Number(await map.getAttribute('data-heading'));
+  await page.keyboard.down('Control');
+  await page.mouse.move(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.68, box!.y + box!.height * 0.5, {steps: 12});
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+
+  await expect.poll(async () => Number(await map.getAttribute('data-heading'))).not.toBe(headingAfterTilt);
 });
 
 test('Live Beta failure is explicit and never replaced with demo aircraft', async ({ page }) => {
