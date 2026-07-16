@@ -1,6 +1,8 @@
 import {
   ArcGisMapServerImageryProvider,
+  Color,
   GeographicTilingScheme,
+  GridImageryProvider,
   ImageryLayer,
   UrlTemplateImageryProvider,
   WebMapServiceImageryProvider,
@@ -49,8 +51,18 @@ function addLayer(viewer: Viewer, provider: ConstructorParameters<typeof Imagery
   return layer;
 }
 
-export async function applyMapStyle(viewer: Viewer, style: MapStyle) {
+export async function applyMapStyle(viewer: Viewer, style: MapStyle, offline = false) {
   viewer.imageryLayers.removeAll(true);
+
+  if (offline) {
+    addLayer(viewer, new GridImageryProvider({
+      cells: 16,
+      color: Color.fromCssColorString('#2c9dcc'),
+      glowColor: Color.fromCssColorString('#0a2435'),
+      backgroundColor: Color.fromCssColorString('#07141f'),
+    }));
+    return;
+  }
 
   // A geographic (EPSG:4326) Blue Marble layer is always kept underneath the
   // selected style. Unlike Web Mercator, it covers both poles without a void.

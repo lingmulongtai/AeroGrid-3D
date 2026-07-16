@@ -47,6 +47,7 @@ type TerrainState = 'loading' | 'terrain' | 'ellipsoid';
 
 const TERRAIN_URL =
   'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer';
+const E2E_OFFLINE_GLOBE = import.meta.env.VITE_E2E === 'true';
 
 function isFlightRecord(value: unknown): value is FlightRecord {
   return Boolean(value && typeof value === 'object' && 'callsign' in value && 'latitude' in value);
@@ -121,16 +122,20 @@ export function EarthMap({
     setViewer(nextViewer);
 
     let cancelled = false;
-    ArcGISTiledElevationTerrainProvider.fromUrl(TERRAIN_URL)
-      .then((terrainProvider) => {
-        if (cancelled || nextViewer.isDestroyed()) return;
-        nextViewer.terrainProvider = terrainProvider;
-        setTerrainState('terrain');
-        scene.requestRender();
-      })
-      .catch(() => {
-        if (!cancelled) setTerrainState('ellipsoid');
-      });
+    if (E2E_OFFLINE_GLOBE) {
+      setTerrainState('ellipsoid');
+    } else {
+      ArcGISTiledElevationTerrainProvider.fromUrl(TERRAIN_URL)
+        .then((terrainProvider) => {
+          if (cancelled || nextViewer.isDestroyed()) return;
+          nextViewer.terrainProvider = terrainProvider;
+          setTerrainState('terrain');
+          scene.requestRender();
+        })
+        .catch(() => {
+          if (!cancelled) setTerrainState('ellipsoid');
+        });
+    }
 
     return () => {
       cancelled = true;
@@ -143,8 +148,8 @@ export function EarthMap({
   useEffect(() => {
     if (!viewer) return;
     let cancelled = false;
-    applyMapStyle(viewer, mapStyle).catch(() => {
-      if (!cancelled && !viewer.isDestroyed()) applyMapStyle(viewer, 'opengrid').catch(() => undefined);
+    applyMapStyle(viewer, mapStyle, E2E_OFFLINE_GLOBE).catch(() => {
+      if (!cancelled && !viewer.isDestroyed()) applyMapStyle(viewer, 'opengrid', E2E_OFFLINE_GLOBE).catch(() => undefined);
     });
     return () => { cancelled = true; };
   }, [mapStyle, viewer]);
