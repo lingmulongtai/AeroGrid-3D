@@ -23,6 +23,7 @@ import {
 } from './cesium/camera';
 import {addWeatherLayer, applyMapStyle, type MapStyle} from './cesium/imagery';
 import {installFlightSelection, installSceneContent} from './cesium/sceneContent';
+import {terrainModeForView, type TerrainMode} from './cesium/terrain';
 
 export type ColorMode = 'altitude' | 'speed' | 'category';
 export type {GlobeViewState, MapStyle};
@@ -44,7 +45,7 @@ interface MapProps {
   t: Translator;
 }
 
-type TerrainState = 'loading' | 'terrain' | 'ellipsoid';
+type TerrainState = 'loading' | TerrainMode;
 
 const TERRAIN_URL =
   'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer';
@@ -95,11 +96,15 @@ export function EarthMap({
     });
 
     const {scene} = nextViewer;
+    const ellipsoidTerrain = nextViewer.terrainProvider;
+    let detailedTerrain: ArcGISTiledElevationTerrainProvider | null = null;
+    let activeTerrainMode: TerrainMode = 'ellipsoid';
     configureEarthCamera(nextViewer);
     const removeOrbitControls = installEarthOrbitControls(nextViewer);
     scene.globe.depthTestAgainstTerrain = true;
     scene.globe.showGroundAtmosphere = true;
-    scene.globe.baseColor = Color.fromCssColorString('#02050a');
+    scene.globe.baseColor = Color.fromCssColorString('#15394a');
+    scene.globe.showSkirts = true;
     scene.fog.enabled = true;
     scene.fog.density = 0.00012;
     scene.postProcessStages.fxaa.enabled = true;
@@ -108,6 +113,18 @@ export function EarthMap({
     const updateCameraState = () => {
       if (nextViewer.isDestroyed()) return;
       const state = readEarthCamera(nextViewer);
+      const nextTerrainMode = terrainModeForView({
+        height: state.height,
+        latitude: state.latitude,
+        detailedTerrainAvailable: detailedTerrain !== null,
+      });
+      if (nextTerrainMode !== activeTerrainMode) {
+        activeTerrainMode = nextTerrainMode;
+        nextViewer.terrainProvider = nextTerrainMode === 'terrain'
+          ? detailedTerrain!
+          : ellipsoidTerrain;
+        setTerrainState(nextTerrainMode);
+      }
       setCameraState(state);
       onViewStateChange(state);
     };
@@ -130,8 +147,8 @@ export function EarthMap({
       ArcGISTiledElevationTerrainProvider.fromUrl(TERRAIN_URL)
         .then((terrainProvider) => {
           if (cancelled || nextViewer.isDestroyed()) return;
-          nextViewer.terrainProvider = terrainProvider;
-          setTerrainState('terrain');
+          detailedTerrain = terrainProvider;
+          updateCameraState();
           scene.requestRender();
         })
         .catch(() => {

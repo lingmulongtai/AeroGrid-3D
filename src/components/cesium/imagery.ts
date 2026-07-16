@@ -4,6 +4,8 @@ import {
   GeographicTilingScheme,
   GridImageryProvider,
   ImageryLayer,
+  Rectangle,
+  TileMapServiceImageryProvider,
   UrlTemplateImageryProvider,
   WebMapServiceImageryProvider,
   type Viewer,
@@ -12,6 +14,9 @@ import {
 export type MapStyle = 'opengrid' | 'dark' | 'satellite' | 'night';
 
 export const IMAGERY_SOURCES = {
+  localEarth: {
+    url: '/cesiumStatic/Assets/Textures/NaturalEarthII',
+  },
   globalRelief: {
     url: 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi',
     layer: 'BlueMarble_ShadedRelief_Bathymetry',
@@ -40,6 +45,10 @@ function createGlobalReliefProvider() {
       numberOfLevelZeroTilesX: 2,
       numberOfLevelZeroTilesY: 1,
     }),
+    // The packaged Natural Earth layer owns the polar caps. Keeping the
+    // network relief away from the last five degrees prevents a failed or
+    // no-data WMS tile from painting a black disc over either pole.
+    rectangle: Rectangle.fromDegrees(-180, -85, 180, 85),
     maximumLevel: 7,
     enablePickFeatures: false,
   });
@@ -64,8 +73,15 @@ export async function applyMapStyle(viewer: Viewer, style: MapStyle, offline = f
     return;
   }
 
-  // A geographic (EPSG:4326) Blue Marble layer is always kept underneath the
-  // selected style. Unlike Web Mercator, it covers both poles without a void.
+  // Start with Cesium's packaged, geographic Natural Earth pyramid. It is
+  // same-origin, deterministic, label-free, and includes both polar caps, so
+  // the globe remains complete even when every network source is unavailable.
+  const localEarth = await TileMapServiceImageryProvider.fromUrl(IMAGERY_SOURCES.localEarth.url);
+  if (viewer.isDestroyed()) return;
+  addLayer(viewer, localEarth);
+
+  // NASA relief adds high quality bathymetry over the non-polar body of the
+  // globe. The local layer remains visible beneath it and at both caps.
   addLayer(viewer, createGlobalReliefProvider());
 
   if (style === 'opengrid') return;
