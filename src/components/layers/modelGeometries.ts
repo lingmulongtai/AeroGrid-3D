@@ -2,6 +2,11 @@ import { Geometry } from '@luma.gl/engine';
 
 type Vec3 = [number, number, number];
 
+export type ProceduralMeshData = {
+  vertices: number[];
+  normals: number[];
+};
+
 function makeGeometry(id: string, vertices: number[], normals: number[]) {
   return new Geometry({
     id,
@@ -202,48 +207,14 @@ function pushOctahedron(
 }
 
 export function createAircraftGeometries() {
-  const {vertices: airframeVertices, normals: airframeNormals} = createAircraftMeshData();
-
-  const engineVertices: number[] = [];
-  const engineNormals: number[] = [];
-  pushEngine(engineVertices, engineNormals, -11.5, -2.45);
-  pushEngine(engineVertices, engineNormals, 11.5, -2.45);
-
-  const glazingVertices: number[] = [];
-  const glazingNormals: number[] = [];
-  pushQuad(
-    glazingVertices,
-    glazingNormals,
-    [0, 27.2, 1.25],
-    [-1.8, 22.5, 2.35],
-    [-2.05, 16.6, 2.95],
-    [0, 15.5, 3.22],
-  );
-  pushQuad(
-    glazingVertices,
-    glazingNormals,
-    [0, 27.2, 1.25],
-    [0, 15.5, 3.22],
-    [2.05, 16.6, 2.95],
-    [1.8, 22.5, 2.35],
-  );
-  pushDiscY(glazingVertices, glazingNormals, [-11.5, 5.58, -2.45], 1.78, true);
-  pushDiscY(glazingVertices, glazingNormals, [11.5, 5.58, -2.45], 1.78, true);
-
-  const portLightVertices: number[] = [];
-  const portLightNormals: number[] = [];
-  pushOctahedron(portLightVertices, portLightNormals, [-34.1, -7.8, 0.2], 1.25);
-
-  const starboardLightVertices: number[] = [];
-  const starboardLightNormals: number[] = [];
-  pushOctahedron(starboardLightVertices, starboardLightNormals, [34.1, -7.8, 0.2], 1.25);
+  const parts = createAircraftMeshParts();
 
   return {
-    airframe: makeGeometry('aerogrid-aircraft-airframe', airframeVertices, airframeNormals),
-    engines: makeGeometry('aerogrid-aircraft-engines', engineVertices, engineNormals),
-    glazing: makeGeometry('aerogrid-aircraft-glazing', glazingVertices, glazingNormals),
-    portLight: makeGeometry('aerogrid-aircraft-port-light', portLightVertices, portLightNormals),
-    starboardLight: makeGeometry('aerogrid-aircraft-starboard-light', starboardLightVertices, starboardLightNormals),
+    airframe: makeGeometry('aerogrid-aircraft-airframe', parts.airframe.vertices, parts.airframe.normals),
+    engines: makeGeometry('aerogrid-aircraft-engines', parts.engines.vertices, parts.engines.normals),
+    glazing: makeGeometry('aerogrid-aircraft-glazing', parts.glazing.vertices, parts.glazing.normals),
+    portLight: makeGeometry('aerogrid-aircraft-port-light', parts.portLight.vertices, parts.portLight.normals),
+    starboardLight: makeGeometry('aerogrid-aircraft-starboard-light', parts.starboardLight.vertices, parts.starboardLight.normals),
   };
 }
 
@@ -273,11 +244,56 @@ export function createAircraftMeshData() {
   return {vertices: airframeVertices, normals: airframeNormals};
 }
 
+export function createAircraftMeshParts() {
+  const engines: ProceduralMeshData = {vertices: [], normals: []};
+  pushEngine(engines.vertices, engines.normals, -11.5, -2.45);
+  pushEngine(engines.vertices, engines.normals, 11.5, -2.45);
+
+  const glazing: ProceduralMeshData = {vertices: [], normals: []};
+  pushQuad(
+    glazing.vertices,
+    glazing.normals,
+    [0, 27.2, 1.25],
+    [-1.8, 22.5, 2.35],
+    [-2.05, 16.6, 2.95],
+    [0, 15.5, 3.22],
+  );
+  pushQuad(
+    glazing.vertices,
+    glazing.normals,
+    [0, 27.2, 1.25],
+    [0, 15.5, 3.22],
+    [2.05, 16.6, 2.95],
+    [1.8, 22.5, 2.35],
+  );
+  pushDiscY(glazing.vertices, glazing.normals, [-11.5, 5.58, -2.45], 1.78, true);
+  pushDiscY(glazing.vertices, glazing.normals, [11.5, 5.58, -2.45], 1.78, true);
+
+  const portLight: ProceduralMeshData = {vertices: [], normals: []};
+  pushOctahedron(portLight.vertices, portLight.normals, [-34.1, -7.8, 0.2], 1.25);
+
+  const starboardLight: ProceduralMeshData = {vertices: [], normals: []};
+  pushOctahedron(starboardLight.vertices, starboardLight.normals, [34.1, -7.8, 0.2], 1.25);
+
+  return {
+    airframe: createAircraftMeshData(),
+    engines,
+    glazing,
+    portLight,
+    starboardLight,
+  };
+}
+
 export function createAircraftGeometry() {
   return createAircraftGeometries().airframe;
 }
 
 export function createSatelliteGeometry() {
+  const {vertices, normals} = createSatelliteMeshData();
+  return makeGeometry('aerogrid-satellite-model', vertices, normals);
+}
+
+export function createSatelliteMeshData(): ProceduralMeshData {
   const vertices: number[] = [];
   const normals: number[] = [];
 
@@ -299,5 +315,9 @@ export function createSatelliteGeometry() {
   pushTri(vertices, normals, [2, -0.3, 0], [13, 4, 0], [13, -4, 0]);
   pushTri(vertices, normals, [2, -0.3, 0], [2, 0.3, 0], [13, 4, 0]);
 
-  return makeGeometry('aerogrid-satellite-model', vertices, normals);
+  // A small forward-facing communications dish gives the silhouette a clear
+  // spacecraft identity from oblique views.
+  pushDiscY(vertices, normals, [0, 3.2, 0], 2.6, true);
+
+  return {vertices, normals};
 }
