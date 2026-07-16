@@ -1,29 +1,30 @@
-import { useEffect, useMemo, useState } from 'react';
-import DeckGL from '@deck.gl/react';
-import { _GlobeView as GlobeView, AmbientLight, DirectionalLight, LightingEffect } from '@deck.gl/core';
-import { ScatterplotLayer } from '@deck.gl/layers';
-import type { AppMode, FlightRecord } from '../../shared/contracts';
-import { MAJOR_AIRPORTS } from '../data/airports';
-import type { LayerVisibility } from '../types/layers';
-import type { QualitySettings } from '../types/quality';
-import type { Translator } from '../i18n';
-import { MapControls } from './MapControls';
-import { useAdvancedGlobeCamera, type GlobeViewState } from './camera/useAdvancedGlobeCamera';
-import { createAirportLayers } from './layers/airportLayer';
-import { createBasemapLayer, createWeatherTileLayer, type MapStyle } from './layers/basemapLayer';
-import { createFlightLayers } from './layers/flightLayers';
-import { createSpaceLayers } from './layers/spaceLayers';
-import { createWeatherParticleLayer, createWeatherParticles } from './layers/weatherParticleLayer';
-
-const INITIAL_VIEW_STATE: GlobeViewState = {
-  longitude: 139.76,
-  latitude: 35.68,
-  zoom: 1.35,
-  pitch: 8,
-  bearing: 0,
-};
+import {useEffect, useMemo, useRef, useState} from 'react';
+import {
+  ArcGISTiledElevationTerrainProvider,
+  Cartesian3,
+  Color,
+  EllipsoidTerrainProvider,
+  ScreenSpaceEventHandler,
+  ScreenSpaceEventType,
+  Viewer,
+} from 'cesium';
+import type {AppMode, FlightRecord} from '../../shared/contracts';
+import type {LayerVisibility} from '../types/layers';
+import type {QualitySettings} from '../types/quality';
+import type {Translator} from '../i18n';
+import {MapControls} from './MapControls';
+import {
+  configureEarthCamera,
+  INITIAL_CAMERA,
+  readEarthCamera,
+  resetEarthCamera,
+  type GlobeViewState,
+} from './cesium/camera';
+import {addWeatherLayer, applyMapStyle, type MapStyle} from './cesium/imagery';
+import {installFlightSelection, installSceneContent} from './cesium/sceneContent';
 
 export type ColorMode = 'altitude' | 'speed' | 'category';
+export type {GlobeViewState, MapStyle};
 
 interface MapProps {
   mode: AppMode;
@@ -42,90 +43,205 @@ interface MapProps {
   t: Translator;
 }
 
-function createLighting(nightMode: boolean) {
-  return new LightingEffect({
-    ambient: new AmbientLight({ color: [210, 225, 255], intensity: nightMode ? 0.28 : 0.72 }),
-    directional: new DirectionalLight({ color: [255, 245, 220], intensity: nightMode ? 0.55 : 1.55, direction: [-1, -3, -1] }),
-  });
+type TerrainState = 'loading' | 'terrain' | 'ellipsoid';
+
+const TERRAIN_URL =
+  'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer';
+const E2E_OFFLINE_GLOBE = import.meta.env.VITE_E2E === 'true';
+
+function isFlightRecord(value: unknown): value is FlightRecord {
+  return Boolean(value && typeof value === 'object' && 'callsign' in value && 'latitude' in value);
 }
 
 export function EarthMap({
   mode, layers, colorMode, mapStyle, flights, radarTileUrl, weatherOpacity,
-  selectedFlight, trackedFlight, quality, onFlightClick, onViewStateChange, onWeatherTileError,
-  t,
+  selectedFlight, trackedFlight, quality, onFlightClick, onViewStateChange,
+  onWeatherTileError, t,
 }: MapProps) {
-  const [viewState, setViewState] = useState<GlobeViewState>(INITIAL_VIEW_STATE);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [viewer, setViewer] = useState<Viewer | null>(null);
   const [nightLighting, setNightLighting] = useState(false);
-  const cameraHandlers = useAdvancedGlobeCamera(viewState, setViewState);
-
-  useEffect(() => onViewStateChange(viewState), [onViewStateChange, viewState]);
+  const [terrainState, setTerrainState] = useState<TerrainState>('loading');
+  const [cameraState, setCameraState] = useState<GlobeViewState>({
+    ...INITIAL_CAMERA,
+    zoom: 1.35,
+  });
+  const visibleFlights = useMemo(
+    () => flights.slice(0, quality.maxFlights),
+    [flights, quality.maxFlights],
+  );
 
   useEffect(() => {
-    if (!trackedFlight) return;
-    setViewState((previous) => ({
-      ...previous,
-      longitude: trackedFlight.longitude,
-      latitude: trackedFlight.latitude,
-      transitionDuration: 900,
-    }));
-  }, [trackedFlight]);
+    if (!containerRef.current) return;
 
-  const visibleFlights = useMemo(() => flights.slice(0, quality.maxFlights), [flights, quality.maxFlights]);
-  const weatherParticles = useMemo(
-    () => createWeatherParticles(mode === 'demo' ? quality.weatherParticles : 0, 4242),
-    [mode, quality.weatherParticles],
-  );
-  const view = useMemo(
-    () => new GlobeView({ id: 'globe', resolution: quality.globeResolution, nearZMultiplier: 0.02, farZMultiplier: 100 }),
-    [quality.globeResolution],
-  );
-  const lighting = useMemo(() => createLighting(nightLighting), [nightLighting]);
+    const nextViewer = new Viewer(containerRef.current, {
+      animation: false,
+      baseLayer: false,
+      baseLayerPicker: false,
+      fullscreenButton: false,
+      geocoder: false,
+      homeButton: false,
+      infoBox: false,
+      navigationHelpButton: false,
+      scene3DOnly: true,
+      sceneModePicker: false,
+      selectionIndicator: false,
+      shouldAnimate: false,
+      timeline: false,
+      terrainProvider: new EllipsoidTerrainProvider(),
+      requestRenderMode: true,
+      maximumRenderTimeChange: Number.POSITIVE_INFINITY,
+    });
 
-  const renderedLayers = useMemo(() => {
-    const result: unknown[] = [...createSpaceLayers(), createBasemapLayer(mapStyle, quality)];
-    if (layers.weather && mode === 'live-beta' && radarTileUrl) {
-      result.push(createWeatherTileLayer(radarTileUrl, weatherOpacity, onWeatherTileError));
+    const {scene} = nextViewer;
+    configureEarthCamera(nextViewer);
+    scene.globe.depthTestAgainstTerrain = true;
+    scene.globe.showGroundAtmosphere = true;
+    scene.globe.baseColor = Color.fromCssColorString('#02050a');
+    scene.fog.enabled = true;
+    scene.fog.density = 0.00012;
+    scene.postProcessStages.fxaa.enabled = true;
+    if ('msaaSamples' in scene) scene.msaaSamples = Math.min(4, quality.dpr > 1 ? 4 : 2);
+
+    const updateCameraState = () => {
+      if (nextViewer.isDestroyed()) return;
+      const state = readEarthCamera(nextViewer);
+      setCameraState(state);
+      onViewStateChange(state);
+    };
+    nextViewer.camera.moveEnd.addEventListener(updateCameraState);
+    nextViewer.camera.setView({
+      destination: Cartesian3.fromDegrees(
+        INITIAL_CAMERA.longitude,
+        INITIAL_CAMERA.latitude,
+        INITIAL_CAMERA.height,
+      ),
+      orientation: {heading: 0, pitch: -Math.PI / 2, roll: 0},
+    });
+    updateCameraState();
+    setViewer(nextViewer);
+
+    let cancelled = false;
+    if (E2E_OFFLINE_GLOBE) {
+      setTerrainState('ellipsoid');
+    } else {
+      ArcGISTiledElevationTerrainProvider.fromUrl(TERRAIN_URL)
+        .then((terrainProvider) => {
+          if (cancelled || nextViewer.isDestroyed()) return;
+          nextViewer.terrainProvider = terrainProvider;
+          setTerrainState('terrain');
+          scene.requestRender();
+        })
+        .catch(() => {
+          if (!cancelled) setTerrainState('ellipsoid');
+        });
     }
-    if (layers.weather && mode === 'demo') result.push(createWeatherParticleLayer(weatherParticles));
-    if (layers.airports) result.push(...createAirportLayers(MAJOR_AIRPORTS, layers.labels));
-    if (layers.flights) result.push(...createFlightLayers({ flights: visibleFlights, colorMode, showTrails: layers.flightTrails, onFlightClick }));
-    if (selectedFlight) {
-      result.push(new ScatterplotLayer<FlightRecord>({
-        id: 'selected-flight', data: [selectedFlight],
-        getPosition: (flight) => [flight.longitude, flight.latitude, flight.altitude],
-        getFillColor: [255, 255, 255, 0], getRadius: 22_000, radiusMinPixels: 11,
-        stroked: true, lineWidthMinPixels: 2, getLineColor: [255, 255, 255, 220], pickable: false,
-      }));
-    }
-    return result;
-  }, [colorMode, layers, mapStyle, mode, onFlightClick, onWeatherTileError, quality, radarTileUrl, selectedFlight, visibleFlights, weatherOpacity, weatherParticles]);
 
-  const tooltip = ({ object }: { object?: FlightRecord }) => object ? {
-    text: `${object.callsign}\n${Math.round(object.velocity * 1.94384)} kt · ${Math.round(object.altitude * 3.28084).toLocaleString()} ft`,
-    style: { background: 'rgba(5, 10, 20, 0.92)', color: '#fff', border: '1px solid rgba(255,255,255,.12)', borderRadius: '10px', fontSize: '12px' },
-  } : null;
+    return () => {
+      cancelled = true;
+      nextViewer.camera.moveEnd.removeEventListener(updateCameraState);
+      setViewer(null);
+      nextViewer.destroy();
+    };
+  }, [onViewStateChange, quality.dpr]);
+
+  useEffect(() => {
+    if (!viewer) return;
+    let cancelled = false;
+    applyMapStyle(viewer, mapStyle, E2E_OFFLINE_GLOBE).catch(() => {
+      if (!cancelled && !viewer.isDestroyed()) applyMapStyle(viewer, 'opengrid', E2E_OFFLINE_GLOBE).catch(() => undefined);
+    });
+    return () => { cancelled = true; };
+  }, [mapStyle, viewer]);
+
+  useEffect(() => {
+    if (!viewer || !layers.weather || mode !== 'live-beta' || !radarTileUrl) return;
+    return addWeatherLayer(viewer, radarTileUrl, weatherOpacity, onWeatherTileError);
+  }, [layers.weather, mode, onWeatherTileError, radarTileUrl, viewer, weatherOpacity]);
+
+  useEffect(() => {
+    if (!viewer) return;
+    return installSceneContent({
+      viewer,
+      flights: visibleFlights,
+      colorMode,
+      showFlights: layers.flights,
+      showTrails: layers.flightTrails,
+      showAirports: layers.airports,
+      showLabels: layers.labels,
+      cameraHeight: cameraState.height,
+    });
+  }, [cameraState.height, colorMode, layers, viewer, visibleFlights]);
+
+  useEffect(() => {
+    if (!viewer) return;
+    return installFlightSelection(viewer, selectedFlight, colorMode, cameraState.height);
+  }, [cameraState.height, colorMode, selectedFlight, viewer]);
+
+  useEffect(() => {
+    if (!viewer) return;
+    viewer.scene.globe.enableLighting = nightLighting;
+    viewer.scene.requestRender();
+  }, [nightLighting, viewer]);
+
+  useEffect(() => {
+    if (!viewer) return;
+    const clickHandler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+    clickHandler.setInputAction((event: {position: {x: number; y: number}}) => {
+      const picked = viewer.scene.pick(event.position) as {id?: unknown} | undefined;
+      if (isFlightRecord(picked?.id)) onFlightClick(picked.id);
+    }, ScreenSpaceEventType.LEFT_CLICK);
+    return () => clickHandler.destroy();
+  }, [onFlightClick, viewer]);
+
+  const trackedFlightId = trackedFlight?.id ?? null;
+  useEffect(() => {
+    if (!viewer || !trackedFlight) return;
+    viewer.camera.flyTo({
+      destination: Cartesian3.fromDegrees(
+        trackedFlight.longitude,
+        trackedFlight.latitude,
+        Math.max(90_000, viewer.camera.positionCartographic.height * 0.72),
+      ),
+      duration: 0.9,
+    });
+  // Tracking updates the camera when the user starts tracking a new aircraft.
+  // Position refreshes must not restart the fly-to animation every second.
+  }, [trackedFlightId, viewer]);
+
+  const zoomCamera = (inward: boolean) => {
+    if (!viewer) return;
+    const height = viewer.camera.positionCartographic.height;
+    const amount = Math.max(500, height * (inward ? 0.38 : 0.55));
+    if (inward) viewer.camera.zoomIn(amount);
+    else viewer.camera.zoomOut(amount);
+    const state = readEarthCamera(viewer);
+    setCameraState(state);
+    onViewStateChange(state);
+    viewer.scene.requestRender();
+  };
 
   return (
-    <div className="map-surface" data-mode={mode}>
-      <DeckGL
-        views={view}
-        viewState={viewState}
-        controller={{ inertia: true, dragRotate: true, doubleClickZoom: false, keyboard: true }}
-        onViewStateChange={({ viewState: next }: { viewState: GlobeViewState }) => setViewState(next)}
-        onDragStart={cameraHandlers.onDragStart}
-        onDrag={cameraHandlers.onDrag}
-        onDragEnd={cameraHandlers.onDragEnd}
-        layers={renderedLayers as never[]}
-        effects={[lighting]}
-        useDevicePixels={Math.min(window.devicePixelRatio || 1, quality.dpr)}
-        getTooltip={tooltip as never}
-        onClick={({ object }: { object?: FlightRecord }) => object && onFlightClick(object)}
-      />
+    <div
+      className="map-surface"
+      data-engine="cesium"
+      data-mode={mode}
+      data-polar-coverage="full"
+      data-terrain={terrainState}
+      data-zoom={cameraState.zoom.toFixed(3)}
+      data-camera-height={cameraState.height.toFixed(0)}
+      data-longitude={cameraState.longitude.toFixed(5)}
+      data-latitude={cameraState.latitude.toFixed(5)}
+      data-heading={cameraState.heading.toFixed(2)}
+      data-pitch={cameraState.pitch.toFixed(2)}
+    >
+      <div ref={containerRef} className="cesium-container" aria-label={t('controls.globe')} />
       <div className="globe-vignette" aria-hidden="true" />
+      <div className="camera-hint">{t('controls.tiltHint')}</div>
       <MapControls
-        onZoomIn={() => setViewState((previous) => ({ ...previous, zoom: Math.min(previous.zoom + 0.8, 12) }))}
-        onZoomOut={() => setViewState((previous) => ({ ...previous, zoom: Math.max(previous.zoom - 0.8, 0.5) }))}
-        onResetView={() => setViewState(INITIAL_VIEW_STATE)}
+        onZoomIn={() => zoomCamera(true)}
+        onZoomOut={() => zoomCamera(false)}
+        onResetView={() => viewer && resetEarthCamera(viewer)}
         nightMode={nightLighting}
         onToggleNight={() => setNightLighting((value) => !value)}
         t={t}
