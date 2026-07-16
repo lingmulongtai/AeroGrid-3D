@@ -27,7 +27,10 @@ export function createApp({ dataService, staticDir, logger }: AppOptions): Expre
       "frame-ancestors 'none'",
       "img-src 'self' data: blob: https:",
       "object-src 'none'",
-      "script-src 'self'",
+      // Cesium's bundled terrain and texture decoders compile WebAssembly and
+      // generated functions at runtime. Keep scripts same-origin while
+      // allowing the decoder runtime required by the globe renderer.
+      "script-src 'self' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       "worker-src 'self' blob:",
     ].join('; '));
