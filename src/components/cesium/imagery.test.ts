@@ -3,6 +3,7 @@ import {IMAGERY_SOURCES} from './imagery';
 
 describe('label-free globe imagery', () => {
   it('uses a global geographic relief source beneath every style', () => {
+    expect(IMAGERY_SOURCES.localEarth.url).toContain('NaturalEarthII');
     expect(IMAGERY_SOURCES.globalRelief.url).toContain('/epsg4326/');
     expect(IMAGERY_SOURCES.globalRelief.layer).toBe('BlueMarble_ShadedRelief_Bathymetry');
   });
