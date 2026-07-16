@@ -42,6 +42,27 @@ test('Demo stays separate and supports the primary exploration flow', async ({ p
   expect(pageErrors).toEqual([]);
 });
 
+test('repeated zoom keeps the globe centered and below the projection switch', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Global Demo/ }).click();
+
+  const map = page.locator('.map-surface');
+  const initialLongitude = await map.getAttribute('data-longitude');
+  const initialLatitude = await map.getAttribute('data-latitude');
+  const zoomIn = page.getByRole('button', { name: 'Zoom in' });
+
+  await expect(zoomIn).toBeVisible();
+  await zoomIn.evaluate((button: HTMLButtonElement) => {
+    for (let step = 0; step < 16; step += 1) button.click();
+  });
+
+  await expect(map).toHaveAttribute('data-longitude', initialLongitude!);
+  await expect(map).toHaveAttribute('data-latitude', initialLatitude!);
+  const zoom = Number(await map.getAttribute('data-zoom'));
+  expect(zoom).toBeLessThan(12);
+  expect(zoom).toBeGreaterThan(11);
+});
+
 test('Live Beta failure is explicit and never replaced with demo aircraft', async ({ page }) => {
   const now = new Date().toISOString();
   await page.route('**/api/v1/flights?**', (route) => route.fulfill({

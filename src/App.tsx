@@ -42,7 +42,7 @@ export function App() {
   const [mode, setMode] = useState<AppMode | null>(storedMode);
   const [layers, setLayers] = useState<LayerVisibility>(DEFAULT_LAYERS);
   const [colorMode, setColorMode] = useState<ColorMode>('altitude');
-  const [mapStyle, setMapStyle] = useState<MapStyle>('dark');
+  const [mapStyle, setMapStyle] = useState<MapStyle>('satellite');
   const [weatherOpacity, setWeatherOpacity] = useState(0.48);
   const [panelOpen, setPanelOpen] = useState(false);
   const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);

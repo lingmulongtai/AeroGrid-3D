@@ -71,7 +71,7 @@ const en = {
   'weather.demo': 'Stylized demo weather',
   'weather.live': 'RainViewer radar · {value}',
   'weather.unavailable': 'Weather radar is temporarily unavailable.',
-  'footer.attribution': 'Map © OpenStreetMap · Live aircraft © Airplanes.live · Radar © RainViewer',
+  'footer.attribution': 'Map data © OpenStreetMap contributors · Imagery © Esri / CARTO · Aircraft © Airplanes.live · Radar © RainViewer',
 } as const;
 
 const ja: Record<keyof typeof en, string> = {
@@ -145,7 +145,7 @@ const ja: Record<keyof typeof en, string> = {
   'weather.demo': 'デモ気象表現',
   'weather.live': 'RainViewerレーダー · {value}',
   'weather.unavailable': '気象レーダーは現在利用できません。',
-  'footer.attribution': '地図 © OpenStreetMap · 航空機 © Airplanes.live · レーダー © RainViewer',
+  'footer.attribution': '地図データ © OpenStreetMap contributors · 画像 © Esri / CARTO · 航空機 © Airplanes.live · レーダー © RainViewer',
 };
 
 export type MessageKey = keyof typeof en;
