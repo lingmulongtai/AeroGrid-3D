@@ -54,6 +54,7 @@ button:focus-visible, input:focus-visible {
 .cesium-container .cesium-widget,
 .cesium-container canvas { width: 100%; height: 100%; }
 .cesium-container canvas { outline: none; }
+.cesium-container canvas.is-orbiting { cursor: grabbing; }
 .cesium-viewer-bottom { display: none; }
 .globe-vignette {
   position: absolute;
