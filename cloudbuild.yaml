@@ -1,49 +1,56 @@
 steps:
-  # 1. 直近ビルドをキャッシュとして取得（失敗しても続行）
   - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        docker pull asia-northeast1-docker.pkg.dev/$PROJECT_ID/my-app/my-app:latest || true
+        docker pull asia-northeast1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aerogrid-3d:latest || true
 
-  # 2. コンテナイメージをビルド（レイヤーキャッシュ活用）
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '--cache-from'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/my-app/my-app:latest'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aerogrid-3d:latest'
       - '-t'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/my-app/my-app:$COMMIT_SHA'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aerogrid-3d:$COMMIT_SHA'
       - '-t'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/my-app/my-app:latest'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aerogrid-3d:latest'
       - '.'
 
-  # 3. Artifact Registry にプッシュ
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/my-app/my-app:$COMMIT_SHA'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aerogrid-3d:$COMMIT_SHA'
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/my-app/my-app:latest'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aerogrid-3d:latest'
 
-  # 4. Cloud Run にデプロイ
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
-      - 'my-service'
+      - '${_SERVICE}'
       - '--image'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/my-app/my-app:$COMMIT_SHA'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aerogrid-3d:$COMMIT_SHA'
       - '--region'
       - 'asia-northeast1'
+      - '--port'
+      - '8080'
+      - '--min'
+      - '0'
+      - '--max'
+      - '1'
+      - '--allow-unauthenticated'
 
 images:
-  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/my-app/my-app:$COMMIT_SHA'
-  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/my-app/my-app:latest'
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aerogrid-3d:$COMMIT_SHA'
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aerogrid-3d:latest'
+
+substitutions:
+  _REPOSITORY: aerogrid
+  _SERVICE: aerogrid-3d
 
 options:
   logging: CLOUD_LOGGING_ONLY

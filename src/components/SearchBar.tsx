@@ -1,142 +1,78 @@
-import { useState, useRef, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
-import type { Flight } from '../hooks/useFlightData';
-import type { SatelliteInfo } from '../hooks/useSatelliteData';
-import type { SelectedObject } from './FlightInfoPanel';
-import { formatAltitude, countryToFlag } from '../utils/flightUtils';
+import { useId, useMemo, useState } from 'react';
+import type { FlightRecord } from '../../shared/contracts';
+import type { Translator } from '../i18n';
 
 interface SearchBarProps {
-  flights: Flight[];
-  satellites: SatelliteInfo[];
-  onSelect: (obj: SelectedObject) => void;
+  flights: FlightRecord[];
+  onSelect: (flight: FlightRecord) => void;
+  t: Translator;
 }
 
-export function SearchBar({ flights, satellites, onSelect }: SearchBarProps) {
+export function SearchBar({ flights, onSelect, t }: SearchBarProps) {
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
-  const [highlighted, setHighlighted] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const listId = useId();
+  const normalized = query.trim().toLowerCase();
+  const results = useMemo(() => {
+    if (normalized.length < 2) return [];
+    return flights.filter((flight) => [
+      flight.callsign, flight.registration, flight.aircraftType, flight.id,
+    ].some((value) => value?.toLowerCase().includes(normalized))).slice(0, 7);
+  }, [flights, normalized]);
 
-  const q = query.trim().toUpperCase();
-
-  const flightResults = q.length >= 2
-    ? flights
-        .filter(f => f.callsign.toUpperCase().includes(q) || f.id.toUpperCase().includes(q))
-        .slice(0, 6)
-    : [];
-
-  const satResults = q.length >= 2
-    ? satellites
-        .filter(s => s.name.toUpperCase().includes(q))
-        .slice(0, 2)
-    : [];
-
-  const results = [...flightResults.map(f => ({ type: 'flight' as const, data: f })),
-                   ...satResults.map(s => ({ type: 'satellite' as const, data: s }))];
-
-  const hasResults = results.length > 0;
-
-  function handleChange(val: string) {
-    setQuery(val);
-    setHighlighted(0);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setOpen(val.trim().length >= 2), 200);
-  }
-
-  function handleSelect(obj: SelectedObject) {
+  const select = (flight: FlightRecord) => {
+    onSelect(flight);
     setQuery('');
-    setOpen(false);
-    onSelect(obj);
-  }
-
-  function handleKeyDown(e: import('react').KeyboardEvent) {
-    if (!open || !hasResults) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlighted(h => Math.min(h + 1, results.length - 1)); }
-    if (e.key === 'ArrowUp') { e.preventDefault(); setHighlighted(h => Math.max(h - 1, 0)); }
-    if (e.key === 'Enter') { e.preventDefault(); handleSelect(results[highlighted]); }
-    if (e.key === 'Escape') { setOpen(false); setQuery(''); }
-  }
-
-  // Close on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
-        && inputRef.current && !inputRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  };
 
   return (
-    <div className="absolute left-3 right-3 top-[5.75rem] z-30 sm:left-1/2 sm:right-auto sm:top-0 sm:w-[26rem] sm:-translate-x-1/2 sm:pt-1">
-      {/* Input */}
-      <div
-        className="flex items-center gap-2 rounded-2xl border border-white/10 px-3 py-2.5 shadow-lg sm:rounded-xl sm:py-2"
-        style={{ background: 'rgba(10,10,16,0.85)', backdropFilter: 'blur(16px)' }}
-      >
-        <Search className="w-4 h-4 text-neutral-500 flex-shrink-0" />
+    <div className="atlas-search">
+      <div className="search-input-wrap">
+        <Search aria-hidden="true" />
         <input
-          ref={inputRef}
-          type="text"
           value={query}
-          onChange={e => handleChange(e.target.value)}
-          onFocus={() => query.trim().length >= 2 && setOpen(true)}
-          onKeyDown={handleKeyDown}
-          placeholder="Search callsign, ICAO, satellite..."
-          className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder-neutral-600"
+          onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); }}
+          placeholder={t('search.placeholder')}
+          aria-label={t('search.placeholder')}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={normalized.length >= 2}
+          aria-controls={listId}
+          aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setQuery('');
+            if (!results.length) return;
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              setActiveIndex((index) => (index + 1) % results.length);
+            } else if (event.key === 'ArrowUp') {
+              event.preventDefault();
+              setActiveIndex((index) => index <= 0 ? results.length - 1 : index - 1);
+            } else if (event.key === 'Enter' && activeIndex >= 0) {
+              event.preventDefault();
+              select(results[activeIndex]);
+            }
+          }}
         />
-        {query && (
-          <button
-            onClick={() => { setQuery(''); setOpen(false); }}
-            className="text-neutral-500 hover:text-white transition-colors"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        )}
+        {query && <button type="button" onClick={() => setQuery('')} aria-label={t('controls.close')}><X /></button>}
       </div>
-
-      {/* Dropdown */}
-      {open && hasResults && (
-        <div
-          ref={dropdownRef}
-          className="mt-1.5 max-h-[45dvh] overflow-y-auto rounded-2xl border border-white/10 shadow-xl sidebar-scroll sm:rounded-xl"
-          style={{ background: 'rgba(10,10,16,0.95)', backdropFilter: 'blur(20px)' }}
-        >
-          {results.map((result, i) => (
+      {normalized.length >= 2 && (
+        <div className="search-results" id={listId} role="listbox">
+          {results.length ? results.map((flight) => (
             <button
-              key={result.type === 'flight' ? result.data.id : result.data.id + '-sat'}
-              onClick={() => handleSelect(result)}
-              onMouseEnter={() => setHighlighted(i)}
-              className={`w-full flex items-center gap-2 px-3 py-3 text-left transition-colors sm:gap-3 sm:px-4 sm:py-2.5 ${
-                i === highlighted ? 'bg-white/8' : 'hover:bg-white/5'
-              } ${i > 0 ? 'border-t border-white/5' : ''}`}
+              type="button"
+              key={flight.id}
+              id={`${listId}-${results.indexOf(flight)}`}
+              role="option"
+              aria-selected={activeIndex === results.indexOf(flight)}
+              onMouseEnter={() => setActiveIndex(results.indexOf(flight))}
+              onClick={() => select(flight)}
             >
-              {result.type === 'flight' ? (
-                <>
-                  <span className="w-16 truncate font-mono text-sm font-bold text-yellow-400 sm:w-20">
-                    {result.data.callsign}
-                  </span>
-                  <span className="text-base">{countryToFlag(result.data.country)}</span>
-                  <span className="text-neutral-500 text-xs flex-1 truncate">{result.data.country}</span>
-                  <span className="text-cyan-400 text-xs font-mono flex-shrink-0">
-                    {formatAltitude(result.data.altitude)}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="text-cyan-400 text-xs">🛰</span>
-                  <span className="text-white text-sm flex-1 truncate font-mono">{result.data.name}</span>
-                  <span className="text-neutral-500 text-xs flex-shrink-0">
-                    {Math.round(result.data.altitude / 1000)} km
-                  </span>
-                </>
-              )}
+              <span><strong>{flight.callsign}</strong><small>{flight.registration ?? flight.id.toUpperCase()}</small></span>
+              <span>{Math.round(flight.altitude * 3.28084).toLocaleString()} ft</span>
             </button>
-          ))}
+          )) : <p>{t('search.empty')}</p>}
         </div>
       )}
     </div>

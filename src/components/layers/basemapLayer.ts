@@ -73,7 +73,11 @@ export function createBasemapLayer(mapStyle: MapStyle, quality: QualitySettings)
   });
 }
 
-export function createWeatherTileLayer(radarTileUrl: string) {
+export function createWeatherTileLayer(
+  radarTileUrl: string,
+  opacity: number,
+  onTileError?: (error: unknown) => void,
+) {
   return new TileLayer({
     id: 'weather-radar',
     data: radarTileUrl,
@@ -81,13 +85,14 @@ export function createWeatherTileLayer(radarTileUrl: string) {
     maxZoom: 8,
     tileSize: 256,
     refinementStrategy: 'best-available',
+    onTileError,
     renderSubLayers: (props: any) => {
       const { west, south, east, north } = props.tile.bbox;
       return new BitmapLayer(props, {
         data: null,
         image: props.data,
         bounds: [west, south, east, north],
-        opacity: 0.5,
+        opacity,
       } as any);
     },
   });
