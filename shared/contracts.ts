@@ -1,4 +1,5 @@
 export type AppMode = 'demo' | 'live-beta';
+export const APP_VERSION = '0.1.0';
 
 export type SourceStatus = 'available' | 'stale' | 'rate-limited' | 'unavailable';
 
@@ -69,6 +70,8 @@ export interface SourceHealth {
 
 export interface AtlasStatus {
   service: 'aerogrid-3d';
+  version: string;
+  revision?: string;
   status: 'ok' | 'degraded';
   time: string;
   sources: {

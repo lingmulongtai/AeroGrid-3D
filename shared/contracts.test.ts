@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
+  APP_VERSION,
   isTrustedLiveSnapshot,
   LIVE_STALE_AFTER_MS,
   LIVE_UNAVAILABLE_AFTER_MS,
   statusForAge,
   type DataSnapshot,
 } from './contracts';
+
+describe('release metadata', () => {
+  it('exposes the application version to health and telemetry surfaces', () => {
+    expect(APP_VERSION).toBe('0.1.0');
+  });
+});
 
 describe('statusForAge', () => {
   const now = Date.UTC(2026, 6, 16, 0, 0, 0);

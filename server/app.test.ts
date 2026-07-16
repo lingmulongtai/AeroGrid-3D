@@ -1,4 +1,7 @@
 import request from 'supertest';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { AtlasStatus, DataSnapshot, FlightRecord, WeatherFrame } from '../shared/contracts';
 import type { AtlasDataService } from './services/atlasData';
@@ -17,7 +20,7 @@ function serviceStub(): AtlasDataService {
     coverage: { kind: 'global' }, items: [], message: 'offline',
   };
   const status: AtlasStatus = {
-    service: 'aerogrid-3d', status: 'degraded', time: '2026-07-16T00:00:00.000Z',
+    service: 'aerogrid-3d', version: '0.1.0', status: 'degraded', time: '2026-07-16T00:00:00.000Z',
     sources: {
       flights: { source: 'airplanes.live', status: 'unavailable', updatedAt: null },
       weather: { source: 'rainviewer', status: 'unavailable', updatedAt: null },
@@ -59,6 +62,34 @@ describe('AeroGrid REST API', () => {
 
     expect(logger).toHaveBeenCalledWith(expect.objectContaining({
       level: 'info', event: 'http.request', method: 'GET', path: '/api/v1/status', status: 200,
+      requestId: expect.any(String),
     }));
+  });
+
+  it('sends security headers and safe production cache policies', async () => {
+    const staticDir = await mkdtemp(path.join(tmpdir(), 'aerogrid-static-'));
+    await mkdir(path.join(staticDir, 'assets'));
+    await writeFile(path.join(staticDir, 'index.html'), '<main>AeroGrid</main>');
+    await writeFile(path.join(staticDir, 'assets', 'app-ABC123.js'), 'export {};');
+
+    try {
+      const app = createApp({ dataService: serviceStub(), staticDir, logger: vi.fn() });
+      const apiResponse = await request(app).get('/api/v1/status').expect(200);
+      expect(apiResponse.headers).toMatchObject({
+        'cache-control': 'no-store',
+        'referrer-policy': 'strict-origin-when-cross-origin',
+        'x-content-type-options': 'nosniff',
+        'x-frame-options': 'DENY',
+      });
+      expect(apiResponse.headers['content-security-policy']).toContain("frame-ancestors 'none'");
+      expect(apiResponse.headers['x-request-id']).toEqual(expect.any(String));
+
+      const assetResponse = await request(app).get('/assets/app-ABC123.js').expect(200);
+      expect(assetResponse.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+      const documentResponse = await request(app).get('/route').expect(200);
+      expect(documentResponse.headers['cache-control']).toBe('no-store');
+    } finally {
+      await rm(staticDir, { recursive: true, force: true });
+    }
   });
 });
