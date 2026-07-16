@@ -16,6 +16,7 @@ export type ResolvedMapStyle = MapStyle | 'satellite-global';
 // resolutions and no-data rectangles well before its mathematical limit.
 // Switch to the continuous geographic base before those seams enter view.
 export const POLAR_BASEMAP_LATITUDE = 60;
+export const SENTINEL_NORTH_LIMIT = 84;
 export const ORBITAL_BASEMAP_HEIGHT = 8_000_000;
 
 export function mapStyleForView(
@@ -23,9 +24,10 @@ export function mapStyleForView(
   latitude: number,
   cameraHeight: number,
 ): ResolvedMapStyle {
-  if (Math.abs(latitude) >= POLAR_BASEMAP_LATITUDE) {
+  if (latitude >= POLAR_BASEMAP_LATITUDE && latitude < SENTINEL_NORTH_LIMIT) {
     return style === 'satellite' ? 'satellite-global' : 'opengrid';
   }
+  if (latitude <= -POLAR_BASEMAP_LATITUDE || latitude >= SENTINEL_NORTH_LIMIT) return 'opengrid';
   if (cameraHeight < ORBITAL_BASEMAP_HEIGHT) return style;
   return style === 'satellite' ? 'satellite-global' : 'opengrid';
 }
@@ -36,6 +38,9 @@ export const IMAGERY_SOURCES = {
   },
   satellite: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer',
+  },
+  polarSatellite: {
+    url: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2025/default/WGS84/{z}/{y}/{x}.jpg',
   },
   dark: {
     url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png',
@@ -54,6 +59,18 @@ function addLayer(
   viewer.imageryLayers.add(layer);
   viewer.scene.requestRender();
   return layer;
+}
+
+function createGlobalSatelliteProvider() {
+  return new UrlTemplateImageryProvider({
+    url: IMAGERY_SOURCES.polarSatellite.url,
+    tilingScheme: new GeographicTilingScheme({
+      numberOfLevelZeroTilesX: 2,
+      numberOfLevelZeroTilesY: 1,
+    }),
+    maximumLevel: 13,
+    enablePickFeatures: false,
+  });
 }
 
 export async function applyMapStyle(viewer: Viewer, style: ResolvedMapStyle, offline = false) {
@@ -82,16 +99,15 @@ export async function applyMapStyle(viewer: Viewer, style: ResolvedMapStyle, off
 
   if (style === 'opengrid') return;
 
-  if (style === 'satellite' || style === 'satellite-global') {
+  if (style === 'satellite-global') {
+    addLayer(viewer, createGlobalSatelliteProvider());
+    return;
+  }
+
+  if (style === 'satellite') {
     const provider = await ArcGisMapServerImageryProvider.fromUrl(IMAGERY_SOURCES.satellite.url, {
       enablePickFeatures: false,
-      usePreCachedTilesIfAvailable: style === 'satellite',
-      tilingScheme: style === 'satellite-global'
-        ? new GeographicTilingScheme({
-            numberOfLevelZeroTilesX: 2,
-            numberOfLevelZeroTilesY: 1,
-          })
-        : undefined,
+      usePreCachedTilesIfAvailable: true,
     });
     if (!viewer.isDestroyed()) addLayer(viewer, provider);
     return;

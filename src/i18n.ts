@@ -75,7 +75,7 @@ const en = {
   'weather.demo': 'Stylized demo weather',
   'weather.live': 'RainViewer radar · {value}',
   'weather.unavailable': 'Weather radar is temporarily unavailable.',
-  'footer.attribution': '3D engine © Cesium · Global imagery © Natural Earth / Cesium · Detail imagery © Esri / CARTO / OpenInfraMap · Aircraft © Airplanes.live · Satellite preview: deterministic simulation · Radar © RainViewer',
+  'footer.attribution': '3D engine © Cesium · Global imagery © Natural Earth / Cesium · Detail imagery © Esri / EOX / CARTO / OpenInfraMap · Aircraft © Airplanes.live · Satellite preview: deterministic simulation · Radar © RainViewer',
 } as const;
 
 const ja: Record<keyof typeof en, string> = {
@@ -153,7 +153,7 @@ const ja: Record<keyof typeof en, string> = {
   'weather.demo': 'デモ気象表現',
   'weather.live': 'RainViewerレーダー · {value}',
   'weather.unavailable': '気象レーダーは現在利用できません。',
-  'footer.attribution': '3Dエンジン © Cesium · 全球画像 © Natural Earth / Cesium · 詳細画像 © Esri / CARTO / OpenInfraMap · 航空機 © Airplanes.live · 衛星プレビュー: 決定論的シミュレーション · レーダー © RainViewer',
+  'footer.attribution': '3Dエンジン © Cesium · 全球画像 © Natural Earth / Cesium · 詳細画像 © Esri / EOX / CARTO / OpenInfraMap · 航空機 © Airplanes.live · 衛星プレビュー: 決定論的シミュレーション · レーダー © RainViewer',
 };
 
 export type MessageKey = keyof typeof en;
