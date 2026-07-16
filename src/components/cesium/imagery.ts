@@ -12,7 +12,10 @@ import {
 export type MapStyle = 'opengrid' | 'dark' | 'satellite' | 'night';
 export type ResolvedMapStyle = MapStyle | 'satellite-global';
 
-export const POLAR_BASEMAP_LATITUDE = 68;
+// ArcGIS' cached Web Mercator imagery begins exposing mismatched source
+// resolutions and no-data rectangles well before its mathematical limit.
+// Switch to the continuous geographic base before those seams enter view.
+export const POLAR_BASEMAP_LATITUDE = 60;
 export const ORBITAL_BASEMAP_HEIGHT = 8_000_000;
 
 export function mapStyleForView(

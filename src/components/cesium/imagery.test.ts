@@ -17,7 +17,8 @@ describe('label-free globe imagery', () => {
 
   it('falls back to the complete geographic base around both poles', () => {
     expect(mapStyleForView('satellite', 35, 2_000_000)).toBe('satellite');
-    expect(mapStyleForView('satellite', 68, 2_000_000)).toBe('opengrid');
+    expect(mapStyleForView('satellite', 59.9, 2_000_000)).toBe('satellite');
+    expect(mapStyleForView('satellite', 60, 2_000_000)).toBe('opengrid');
     expect(mapStyleForView('dark', -90, 2_000_000)).toBe('opengrid');
     expect(mapStyleForView('satellite', 0, 8_000_000)).toBe('satellite-global');
   });
