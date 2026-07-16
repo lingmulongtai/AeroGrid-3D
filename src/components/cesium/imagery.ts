@@ -4,22 +4,30 @@ import {
   GeographicTilingScheme,
   GridImageryProvider,
   ImageryLayer,
-  Rectangle,
   TileMapServiceImageryProvider,
   UrlTemplateImageryProvider,
-  WebMapServiceImageryProvider,
   type Viewer,
 } from 'cesium';
 
 export type MapStyle = 'opengrid' | 'dark' | 'satellite' | 'night';
+export type ResolvedMapStyle = MapStyle | 'satellite-global';
+
+export const POLAR_BASEMAP_LATITUDE = 68;
+export const ORBITAL_BASEMAP_HEIGHT = 8_000_000;
+
+export function mapStyleForView(
+  style: MapStyle,
+  latitude: number,
+  cameraHeight: number,
+): ResolvedMapStyle {
+  if (Math.abs(latitude) >= POLAR_BASEMAP_LATITUDE) return 'opengrid';
+  if (cameraHeight < ORBITAL_BASEMAP_HEIGHT) return style;
+  return style === 'satellite' ? 'satellite-global' : 'opengrid';
+}
 
 export const IMAGERY_SOURCES = {
   localEarth: {
-    url: '/cesiumStatic/Assets/Textures/NaturalEarthII',
-  },
-  globalRelief: {
-    url: 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi',
-    layer: 'BlueMarble_ShadedRelief_Bathymetry',
+    url: '/cesiumStatic/Assets/Textures/NaturalEarthII/',
   },
   satellite: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer',
@@ -32,35 +40,18 @@ export const IMAGERY_SOURCES = {
   },
 } as const;
 
-function createGlobalReliefProvider() {
-  return new WebMapServiceImageryProvider({
-    url: IMAGERY_SOURCES.globalRelief.url,
-    layers: IMAGERY_SOURCES.globalRelief.layer,
-    parameters: {
-      format: 'image/jpeg',
-      transparent: false,
-      version: '1.1.1',
-    },
-    tilingScheme: new GeographicTilingScheme({
-      numberOfLevelZeroTilesX: 2,
-      numberOfLevelZeroTilesY: 1,
-    }),
-    // The packaged Natural Earth layer owns the polar caps. Keeping the
-    // network relief away from the last five degrees prevents a failed or
-    // no-data WMS tile from painting a black disc over either pole.
-    rectangle: Rectangle.fromDegrees(-180, -85, 180, 85),
-    maximumLevel: 7,
-    enablePickFeatures: false,
-  });
-}
-
-function addLayer(viewer: Viewer, provider: ConstructorParameters<typeof ImageryLayer>[0], alpha = 1) {
+function addLayer(
+  viewer: Viewer,
+  provider: ConstructorParameters<typeof ImageryLayer>[0],
+  alpha = 1,
+) {
   const layer = new ImageryLayer(provider, {alpha});
   viewer.imageryLayers.add(layer);
+  viewer.scene.requestRender();
   return layer;
 }
 
-export async function applyMapStyle(viewer: Viewer, style: MapStyle, offline = false) {
+export async function applyMapStyle(viewer: Viewer, style: ResolvedMapStyle, offline = false) {
   viewer.imageryLayers.removeAll(true);
 
   if (offline) {
@@ -80,15 +71,22 @@ export async function applyMapStyle(viewer: Viewer, style: MapStyle, offline = f
   if (viewer.isDestroyed()) return;
   addLayer(viewer, localEarth);
 
-  // NASA relief adds high quality bathymetry over the non-polar body of the
-  // globe. The local layer remains visible beneath it and at both caps.
-  addLayer(viewer, createGlobalReliefProvider());
+  // Keep the deterministic base unobstructed in orbital and polar views.
+  // Regional high-resolution layers are added only when their projection is
+  // safely outside the polar no-data region.
 
   if (style === 'opengrid') return;
 
-  if (style === 'satellite') {
+  if (style === 'satellite' || style === 'satellite-global') {
     const provider = await ArcGisMapServerImageryProvider.fromUrl(IMAGERY_SOURCES.satellite.url, {
       enablePickFeatures: false,
+      usePreCachedTilesIfAvailable: style === 'satellite',
+      tilingScheme: style === 'satellite-global'
+        ? new GeographicTilingScheme({
+            numberOfLevelZeroTilesX: 2,
+            numberOfLevelZeroTilesY: 1,
+          })
+        : undefined,
     });
     if (!viewer.isDestroyed()) addLayer(viewer, provider);
     return;

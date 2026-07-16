@@ -1,4 +1,4 @@
-import { CloudRain, MapPin, Plane, Route, SlidersHorizontal } from 'lucide-react';
+import { CloudRain, MapPin, Plane, Route, Satellite, SlidersHorizontal } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { LayerKey, LayerVisibility } from '../types/layers';
 import type { Translator } from '../i18n';
@@ -15,6 +15,7 @@ export function ControlDock({ layers, panelOpen, onToggleLayer, onTogglePanel, t
   return (
     <nav className="control-dock" aria-label={t('controls.layers')}>
       <DockButton active={layers.flights} label={t('controls.flights')} onClick={() => onToggleLayer('flights')} icon={<Plane />} />
+      <DockButton active={layers.satellites} label={t('controls.satellites')} onClick={() => onToggleLayer('satellites')} icon={<Satellite />} />
       <DockButton active={layers.weather} label={t('controls.weather')} onClick={() => onToggleLayer('weather')} icon={<CloudRain />} />
       <DockButton active={layers.flightTrails} label={t('controls.trails')} onClick={() => onToggleLayer('flightTrails')} icon={<Route />} />
       <DockButton active={layers.airports} label={t('controls.airports')} onClick={() => onToggleLayer('airports')} icon={<MapPin />} />
