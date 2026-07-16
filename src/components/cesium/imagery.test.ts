@@ -6,6 +6,8 @@ describe('label-free globe imagery', () => {
     expect(IMAGERY_SOURCES.localEarth.url).toContain('NaturalEarthII');
     expect(IMAGERY_SOURCES.localEarth.url).toMatch(/\/$/);
     expect(IMAGERY_SOURCES.satellite.url).toContain('World_Imagery');
+    expect(IMAGERY_SOURCES.polarSatellite.url).toContain('s2cloudless-2025');
+    expect(IMAGERY_SOURCES.polarSatellite.url).toContain('WGS84');
   });
 
   it('does not request roads, boundaries, or place-label tiles', () => {
@@ -19,6 +21,8 @@ describe('label-free globe imagery', () => {
     expect(mapStyleForView('satellite', 35, 2_000_000)).toBe('satellite');
     expect(mapStyleForView('satellite', 59.9, 2_000_000)).toBe('satellite');
     expect(mapStyleForView('satellite', 60, 2_000_000)).toBe('satellite-global');
+    expect(mapStyleForView('satellite', 83.9, 2_000_000)).toBe('satellite-global');
+    expect(mapStyleForView('satellite', 84, 2_000_000)).toBe('opengrid');
     expect(mapStyleForView('dark', -90, 2_000_000)).toBe('opengrid');
     expect(mapStyleForView('satellite', 0, 8_000_000)).toBe('satellite-global');
   });
