@@ -3,12 +3,29 @@ import { expect, test, type Page } from '@playwright/test';
 async function expectHealthyPage(page: Page) {
   await expect(page.locator('body')).not.toBeEmpty();
   await expect(page.locator('vite-error-overlay, .vite-error-overlay')).toHaveCount(0);
-  await expect(page.locator('.cesium-widget-errorPanel')).toHaveCount(0);
+  await expect(page.locator('.globe-error')).toHaveCount(0);
   const dimensions = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
     clientWidth: document.documentElement.clientWidth,
   }));
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+}
+
+async function enterDemo(page: Page) {
+  await page.goto('/');
+  await expect(page.getByRole('dialog')).toContainText('See the world in motion.');
+  await page.getByRole('button', { name: /Global Demo/ }).click();
+  await expect(page.locator('.map-surface')).toHaveAttribute('data-engine', 'three');
+}
+
+async function cameraState(page: Page) {
+  return page.locator('.map-surface').evaluate((element) => ({
+    longitude: Number(element.getAttribute('data-longitude')),
+    latitude: Number(element.getAttribute('data-latitude')),
+    height: Number(element.getAttribute('data-camera-height')),
+    heading: Number(element.getAttribute('data-heading')),
+    pitch: Number(element.getAttribute('data-pitch')),
+  }));
 }
 
 test.beforeEach(async ({ page }) => {
@@ -19,96 +36,100 @@ test('Demo stays separate and supports the primary exploration flow', async ({ p
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
-  await page.goto('/');
-  await expect(page.getByRole('dialog')).toContainText('See the world in motion.');
-  await page.getByRole('button', { name: /Global Demo/ }).click();
-
-  await expect(page.getByText('DEMO', { exact: true })).toBeVisible();
+  await enterDemo(page);
+  await expect(page.locator('.mode-badge')).toHaveText('DEMO');
   await expect(page.getByText(/Deterministic simulation/)).toBeVisible();
-  const map = page.locator('.map-surface');
-  await expect(map).toHaveAttribute('data-satellite-render-mode', 'models');
-  await expect(map).toHaveAttribute('data-satellite-count', '18');
+  await expect(page.locator('.mini-globe')).toBeVisible();
+
   await page.getByRole('combobox').fill('JAL');
   const firstAircraft = page.getByRole('option').first();
   await expect(firstAircraft).toBeVisible();
   await firstAircraft.click();
-  await expect(page.getByRole('button', { name: 'Track aircraft' })).toBeVisible();
-  await page.getByRole('button', { name: 'Track aircraft' }).evaluate((button: HTMLButtonElement) => button.click());
   await expect(page.getByRole('button', { name: 'Stop tracking' })).toBeVisible();
-  await expect.poll(async () => map.getAttribute('data-aircraft-lod')).toBe('models');
-  await expect(map).toHaveAttribute('data-selected-aircraft-model', 'true');
-  await expect(map).toHaveAttribute('data-satellite-render-mode', 'hidden-atmosphere');
+  await expect(page.locator('.map-surface')).toHaveAttribute('data-tracking', 'aircraft');
+
+  await page.getByRole('button', { name: 'Stop tracking' }).evaluate((button: HTMLButtonElement) => button.click());
+  await expect(page.getByRole('button', { name: 'Track aircraft' })).toBeVisible();
+  await expect(page.locator('.map-surface')).toHaveAttribute('data-tracking', 'none');
+
+  await page.getByRole('combobox').fill('ISS');
+  await page.getByRole('option', { name: /ISS/ }).first().click();
+  await expect(page.getByRole('complementary', { name: 'ISS' })).toContainText('Simulated orbit');
+  await expect(page.locator('.map-surface')).toHaveAttribute('data-tracking', 'satellite');
 
   await expectHealthyPage(page);
   expect(pageErrors).toEqual([]);
 });
 
-test('settings remain responsive and switch the interface language', async ({page}) => {
-  await page.goto('/');
-  await page.getByRole('button', {name: /Global Demo/}).click();
-  await page.getByRole('button', {name: 'Layers', exact: true})
-    .evaluate((button: HTMLButtonElement) => button.click());
-  const panel = page.getByRole('complementary', {name: 'Layers'});
-  await expect(panel).toBeVisible({timeout: 15_000});
-  await panel.getByRole('button', {name: '日本語'})
-    .evaluate((button: HTMLButtonElement) => button.click());
-  await expect(page.getByRole('button', {name: 'レイヤー', exact: true})).toBeVisible();
+test('the sidebar folds upward and switches the interface language', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'The mobile panel starts collapsed and is covered separately');
+  await enterDemo(page);
+  const sidebar = page.locator('.atlas-sidebar');
+  await expect(sidebar).toHaveAttribute('data-collapsed', 'false');
+  await page.getByRole('button', { name: 'Collapse panel' }).click();
+  await expect(sidebar).toHaveAttribute('data-collapsed', 'true');
+  await page.getByRole('button', { name: 'Expand panel' }).click();
+  await expect(sidebar).toHaveAttribute('data-collapsed', 'false');
+
+  await sidebar.getByRole('button', { name: 'NASA Night' }).click();
+  await expect(page.locator('.map-surface')).toHaveAttribute('data-map-style', 'night');
+  await sidebar.getByRole('button', { name: '日本語' }).click();
+  await expect(page.getByRole('button', { name: 'パネルをたたむ' })).toBeVisible();
   await expectHealthyPage(page);
 });
 
-test('zoom changes camera height without a projection jump', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Global Demo/ }).click();
-
-  const map = page.locator('.map-surface');
-  const initial = await map.evaluate((element) => ({
-    longitude: Number(element.getAttribute('data-longitude')),
-    latitude: Number(element.getAttribute('data-latitude')),
-    height: Number(element.getAttribute('data-camera-height')),
-  }));
-  const zoomIn = page.getByRole('button', { name: 'Zoom in' });
-
-  await expect(zoomIn).toBeVisible();
-  await zoomIn.evaluate((button: HTMLButtonElement) => button.click());
-  await expect.poll(async () => Number(await map.getAttribute('data-camera-height'))).toBeLessThan(initial.height);
-
-  const nextLongitude = Number(await map.getAttribute('data-longitude'));
-  const nextLatitude = Number(await map.getAttribute('data-latitude'));
-  expect(Math.abs(nextLongitude - initial.longitude)).toBeLessThan(0.5);
-  expect(Math.abs(nextLatitude - initial.latitude)).toBeLessThan(0.5);
-  await expect(map).toHaveAttribute('data-engine', 'cesium');
-  await expect(map).toHaveAttribute('data-polar-coverage', 'full');
+test('display settings change quality presets and object limits', async ({ page }) => {
+  await enterDemo(page);
+  await page.getByRole('button', { name: 'Display settings' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Display settings' });
+  await expect(dialog).toBeVisible();
+  // CI renders with software WebGL, so exercise preset switching with a light preset.
+  await dialog.getByRole('button', { name: /Balanced/ }).click();
+  await expect(dialog.getByRole('button', { name: /Balanced/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(dialog.getByRole('button', { name: /Ultra/ })).toHaveAttribute('aria-pressed', 'false');
+  await dialog.getByLabel('Anti-aliasing').selectOption('2');
+  await expect(dialog.getByText('Custom settings are active.')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('aerogrid.quality') ?? '{}'));
+  expect(stored).toMatchObject({ msaa: 2, preset: 'custom' });
 });
 
-test('Shift and Ctrl + drag orbit around a stable 3D ground anchor', async ({page, isMobile}) => {
-  test.skip(isMobile, 'Desktop keyboard gesture');
-  await page.goto('/');
-  await page.getByRole('button', {name: /Global Demo/}).click();
+test('zoom changes camera height without moving the view centre', async ({ page }) => {
+  await enterDemo(page);
+  const initial = await cameraState(page);
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await expect.poll(async () => (await cameraState(page)).height, { timeout: 20_000 }).toBeLessThan(initial.height);
+  const next = await cameraState(page);
+  expect(Math.abs(next.longitude - initial.longitude)).toBeLessThan(0.5);
+  expect(Math.abs(next.latitude - initial.latitude)).toBeLessThan(0.5);
+  await expect(page.locator('.map-surface')).toHaveAttribute('data-polar-coverage', 'full');
+});
 
-  const map = page.locator('.map-surface');
-  const canvas = page.locator('.cesium-widget canvas');
+test('Ctrl + drag tilts in 3D and Alt + drag rotates the view', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'Desktop keyboard gesture');
+  await enterDemo(page);
+  const canvas = page.locator('.globe-canvas');
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
-  const initialPitch = Number(await map.getAttribute('data-pitch'));
+  const initial = await cameraState(page);
 
-  await page.keyboard.down('Shift');
-  await page.mouse.move(box!.x + box!.width * 0.55, box!.y + box!.height * 0.55);
-  await page.mouse.down();
-  await page.mouse.move(box!.x + box!.width * 0.55, box!.y + box!.height * 0.32, {steps: 12});
-  await page.mouse.up();
-  await page.keyboard.up('Shift');
-
-  await expect.poll(async () => Number(await map.getAttribute('data-pitch'))).not.toBe(initialPitch);
-
-  const headingAfterTilt = Number(await map.getAttribute('data-heading'));
+  await page.mouse.move(box!.x + box!.width * 0.5, box!.y + box!.height * 0.6);
   await page.keyboard.down('Control');
-  await page.mouse.move(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5);
   await page.mouse.down();
-  await page.mouse.move(box!.x + box!.width * 0.68, box!.y + box!.height * 0.5, {steps: 12});
+  await page.mouse.move(box!.x + box!.width * 0.5, box!.y + box!.height * 0.4, { steps: 10 });
   await page.mouse.up();
   await page.keyboard.up('Control');
+  await expect.poll(async () => (await cameraState(page)).pitch, { timeout: 20_000 }).toBeGreaterThan(initial.pitch);
 
-  await expect.poll(async () => Number(await map.getAttribute('data-heading'))).not.toBe(headingAfterTilt);
+  const tilted = await cameraState(page);
+  await page.mouse.move(box!.x + box!.width * 0.45, box!.y + box!.height * 0.5);
+  await page.keyboard.down('Alt');
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.6, box!.y + box!.height * 0.5, { steps: 10 });
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  await expect.poll(async () => (await cameraState(page)).heading, { timeout: 20_000 }).not.toBe(tilted.heading);
 });
 
 test('Live Beta failure is explicit and never replaced with demo aircraft', async ({ page }) => {
@@ -137,23 +158,27 @@ test('Live Beta failure is explicit and never replaced with demo aircraft', asyn
 
   await expect(page.getByText('Unavailable', { exact: true })).toBeVisible();
   await expect(page.getByText(/No simulated aircraft are shown/)).toBeVisible();
-  await expect(page.getByText('0', { exact: true })).toBeVisible();
+  await expect(page.locator('.status-count')).toHaveText('0');
   await expectHealthyPage(page);
 });
 
-test('all mobile controls remain reachable inside the viewport or bottom sheet', async ({ page, isMobile }) => {
+test('all mobile controls remain reachable inside the viewport', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'Mobile-only acceptance check');
-  await page.goto('/');
-  await page.getByRole('button', { name: /Global Demo/ }).click();
-  await page.getByRole('button', { name: 'Layers', exact: true }).click();
-
-  const panel = page.getByRole('complementary', { name: 'Layers' });
-  await expect(panel).toBeVisible();
-  const panelBounds = await panel.boundingBox();
-  expect(panelBounds).not.toBeNull();
-  expect(panelBounds!.x).toBeGreaterThanOrEqual(0);
-  expect(panelBounds!.x + panelBounds!.width).toBeLessThanOrEqual(390);
-  await panel.locator('.space-preview').scrollIntoViewIfNeeded();
-  await expect(panel.getByText('Space Preview')).toBeVisible();
+  await enterDemo(page);
+  const sidebar = page.locator('.atlas-sidebar');
+  await expect(sidebar).toHaveAttribute('data-collapsed', 'true');
+  await page.getByRole('button', { name: 'Expand panel' }).click();
+  const bounds = await sidebar.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  await sidebar.locator('.sidebar-note').scrollIntoViewIfNeeded();
+  await expect(sidebar.locator('.sidebar-note')).toBeVisible();
+  for (const name of ['Zoom in', 'Display settings', 'Fullscreen']) {
+    const control = await page.getByRole('button', { name }).boundingBox();
+    expect(control).not.toBeNull();
+    expect(control!.x + control!.width).toBeLessThanOrEqual(390);
+    expect(control!.y + control!.height).toBeLessThanOrEqual(844);
+  }
   await expectHealthyPage(page);
 });

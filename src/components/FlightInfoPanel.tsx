@@ -7,6 +7,7 @@ import { formatAltitude, formatHeading } from '../utils/flightUtils';
 
 interface FlightInfoPanelProps {
   flight: FlightRecord;
+  route?: { from: string; to: string } | null;
   tracked: boolean;
   locale: Locale;
   onClose: () => void;
@@ -14,7 +15,7 @@ interface FlightInfoPanelProps {
   t: Translator;
 }
 
-export function FlightInfoPanel({ flight, tracked, locale, onClose, onToggleTrack, t }: FlightInfoPanelProps) {
+export function FlightInfoPanel({ flight, route, tracked, locale, onClose, onToggleTrack, t }: FlightInfoPanelProps) {
   const verticalRateFpm = Math.round(flight.verticalRate * 196.85);
   const VerticalIcon = verticalRateFpm > 100 ? ArrowUp : verticalRateFpm < -100 ? ArrowDown : Minus;
   const number = new Intl.NumberFormat(locale === 'ja' ? 'ja-JP' : 'en-US');
@@ -29,7 +30,7 @@ export function FlightInfoPanel({ flight, tracked, locale, onClose, onToggleTrac
     >
       <div className="flight-panel-heading">
         <span className="flight-symbol"><Plane /></span>
-        <div><small>{flight.aircraftType ?? t('flight.unknown')}</small><h2>{flight.callsign}</h2><p>{flight.registration ?? flight.id.toUpperCase()}</p></div>
+        <div><small>{flight.aircraftType ?? t('flight.unknown')}</small><h2>{flight.callsign}</h2><p>{route ? `${route.from} → ${route.to} · ` : ''}{flight.registration ?? flight.id.toUpperCase()}</p></div>
         <button type="button" onClick={onClose} aria-label={t('controls.close')}><X /></button>
       </div>
 

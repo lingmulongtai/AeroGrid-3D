@@ -2,6 +2,27 @@
 
 All notable changes to AeroGrid 3D are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- Replaced the Cesium globe with a custom three.js renderer: viewport-prioritised imagery quadtree, polar caps, physically based atmosphere, day/night lighting with city lights, MSAA and bloom.
+- Google Earth style controls: zoom towards the cursor without drift, Ctrl / Shift / right-drag tilt, Alt-drag rotation, inertia, fly-to and object tracking.
+- Moved the search bar to the top centre, replaced the bottom dock with a collapsible sidebar, and made the fullscreen button toggle.
+- Tightened the Content Security Policy: scripts no longer need `unsafe-eval`.
+
+### Added
+
+- Faceted 3D aircraft, satellite and space-station models with satellite light trails.
+- Particle clouds, rain and lightning; Live Beta radar is converted to particles.
+- Real Sun, Moon, star catalogue and Milky Way positions.
+- 3,244 airports, a NASA Black Marble night map, an overview mini globe, and display settings with quality presets and object limits.
+- A larger deterministic satellite constellation and hub-weighted demo traffic across 1,400 routes.
+
+### Removed
+
+- The flat Mercator projection and the Relief style.
+
 ## [0.1.0] - 2026-07-16
 
 ### Added

@@ -9,17 +9,22 @@ AeroGrid has two intentionally separate experiences:
 
 The public beta is designed for non-commercial, low-cost operation without an SLA. Accounts, alerts, history playback, infrastructure layers, and live satellites are outside v1.
 
-![AeroGrid desktop atlas](docs/screenshots/atlas-desktop.png)
-
 ## Product behavior
 
-- Compact desktop toolbar and details panel; mobile dock and scrollable bottom sheets.
-- Regional aircraft search, selection, tracking, altitude, speed, heading, vertical rate, and last reception age.
-- English by default with complete Japanese UI translation.
+- Custom three.js globe renderer: screen-space-error tile quadtree that loads imagery nearest the screen centre first, polar caps, single-scattering atmosphere, real-time day/night terminator with city lights, specular sun glint, MSAA and bloom.
+- Accurate sky: the Sun and Moon are positioned with astronomy-engine, and 8,900 real stars from the HYG catalogue plus a procedural Milky Way rotate with sidereal time.
+- Map styles: Sentinel-2 cloudless + Esri satellite imagery, an OpenGridWorks-style dark map with navy oceans, and NASA Black Marble night lights.
+- Faceted 3D models for airliners, heavies, light aircraft, helicopters, satellites, Starlink-class craft, and space stations; fast objects leave short light trails.
+- Weather is rendered as lit cloud and rain particles: simulated cyclones, fronts and thunderstorms in Demo, RainViewer radar converted to particles in Live Beta.
+- 1,150 major and 2,094 regional airports (OurAirports) with zoom-dependent markers and labels.
+- Google Earth style navigation: drag to pan, wheel to zoom towards the cursor, Ctrl / Shift / right-drag to tilt, Alt-drag to rotate, double-click to fly in, compass to restore north. The overview mini globe shows where you are looking.
+- Display settings with Low / Balanced / High / Ultra presets, MSAA, render resolution, imagery sharpness, bloom, trails, and object limits.
+- Collapsible sidebar, top-centred search for aircraft, satellites and airports, fullscreen toggle, English and Japanese UI.
 - Live source, coverage, update time, freshness, and failure state are always visible.
 - The last successful aircraft snapshot may be shown as `STALE` for at most five minutes. It is then removed.
-- Desktop Demo renders up to 2,000 aircraft; Mobile Demo renders up to 800.
-- The Space Preview is intentionally inactive until a persistent, policy-compliant satellite cache is delivered after v1.
+- Satellites are a deterministic, physically modelled orbital simulation and are never presented as live telemetry.
+
+![AeroGrid desktop atlas](docs/screenshots/atlas-desktop.png)
 
 ## Architecture
 
@@ -46,6 +51,8 @@ Shared types live in `shared/contracts.ts`, including `AppMode`, `SourceStatus`,
 | Live aircraft | [Airplanes.live API](https://airplanes.live/api-guide/) and [tiers](https://airplanes.live/api/) | Server-only, 250 NM maximum, 60-second cache, 1 upstream request/second, 450-request daily soft limit, stop upstream retries after HTTP 429 |
 | Radar | [RainViewer API](https://www.rainviewer.com/api.html) | Server-only metadata, latest documented PNG frame, 10-minute cache, one metadata refresh after tile failure |
 | Demo | AeroGrid deterministic generator | Never presented as live data |
+| Imagery | [EOX Sentinel-2 cloudless](https://s2maps.eu/) (CC BY-NC-SA 4.0), [Esri World Imagery and Dark Gray Canvas](https://www.esri.com/), [NASA GIBS Black Marble](https://www.earthdata.nasa.gov/gibs) | Browser tile requests, viewport-prioritised, LRU cache |
+| Bundled data | NASA Blue Marble, Black Marble and LRO Moon textures; [HYG star catalogue](https://github.com/astronexus/HYG-Database) (CC BY-SA 4.0); [OurAirports](https://ourairports.com/data/) (public domain) | Served from `public/` |
 
 [OpenSky](https://opensky-network.org/about/terms-of-use) is not enabled in the public product. Live satellite data is also disabled until it can use a persistent cache and comply with the [CelesTrak usage policy](https://www.celestrak.org/usage-policy.php).
 

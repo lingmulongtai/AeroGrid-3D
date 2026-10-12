@@ -1,46 +1,25 @@
-import {useEffect, useMemo, useRef, useState} from 'react';
-import {
-  ArcGISTiledElevationTerrainProvider,
-  Cartesian3,
-  Color,
-  EllipsoidTerrainProvider,
-  HeadingPitchRange,
-  Matrix4,
-  Math as CesiumMath,
-  ScreenSpaceEventHandler,
-  ScreenSpaceEventType,
-  Viewer,
-} from 'cesium';
-import type {AppMode, FlightRecord} from '../../shared/contracts';
-import type {LayerVisibility} from '../types/layers';
-import type {QualitySettings} from '../types/quality';
-import type {Translator} from '../i18n';
-import {MapControls} from './MapControls';
-import {
-  configureEarthCamera,
-  INITIAL_CAMERA,
-  installEarthOrbitControls,
-  readEarthCamera,
-  resetEarthCamera,
-  type GlobeViewState,
-} from './cesium/camera';
-import {
-  addWeatherLayer,
-  applyMapStyle,
-  mapStyleForView,
-  POLAR_BASEMAP_LATITUDE,
-  type MapStyle,
-} from './cesium/imagery';
-import {
-  aircraftLodForHeight,
-  installFlightSelection,
-  installSatellitePreview,
-  installSceneContent,
-} from './cesium/sceneContent';
-import {terrainModeForView, type TerrainMode} from './cesium/terrain';
+import { useEffect, useRef, useState } from 'react';
+import type { AppMode, FlightRecord } from '../../shared/contracts';
+import type { Translator } from '../i18n';
+import type { LayerVisibility } from '../types/layers';
+import type { QualitySettings } from '../types/quality';
+import { GlobeEngine, type EngineStats, type HoverInfo, type PickResult, type Selection } from '../globe/engine';
+import type { CameraSnapshot } from '../globe/controls';
+import type { MapStyle } from '../globe/earth';
+import type { ColorMode } from '../globe/layers/aircraft';
+import { MapControls } from './MapControls';
+import { MiniGlobe } from './MiniGlobe';
 
-export type ColorMode = 'altitude' | 'speed' | 'category';
-export type {GlobeViewState, MapStyle};
+export type { ColorMode, MapStyle, Selection, PickResult, EngineStats };
+
+export interface GlobeViewState {
+  longitude: number;
+  latitude: number;
+  height: number;
+  zoom: number;
+  heading: number;
+  pitch: number;
+}
 
 interface MapProps {
   mode: AppMode;
@@ -48,285 +27,152 @@ interface MapProps {
   colorMode: ColorMode;
   mapStyle: MapStyle;
   flights: FlightRecord[];
+  snapshotTime: string;
   radarTileUrl: string | null;
+  radarCenter: { latitude: number; longitude: number };
+  radarRadiusKm: number;
   weatherOpacity: number;
-  selectedFlight: FlightRecord | null;
-  trackedFlight: FlightRecord | null;
+  selection: Selection | null;
+  tracked: Selection | null;
   quality: QualitySettings;
-  onFlightClick: (flight: FlightRecord) => void;
+  onPick: (result: PickResult | null) => void;
   onViewStateChange: (viewState: GlobeViewState) => void;
   onWeatherTileError: () => void;
+  onTrackingInterrupted: () => void;
+  onOpenSettings: () => void;
+  onEngineReady?: (engine: GlobeEngine | null) => void;
   t: Translator;
 }
 
-type TerrainState = 'loading' | TerrainMode;
-
-const TERRAIN_URL =
-  'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer';
 const E2E_OFFLINE_GLOBE = import.meta.env.VITE_E2E === 'true';
 
-function isFlightRecord(value: unknown): value is FlightRecord {
-  return Boolean(value && typeof value === 'object' && 'callsign' in value && 'latitude' in value);
+function toViewState(snapshot: CameraSnapshot): GlobeViewState {
+  return {
+    longitude: snapshot.longitude,
+    latitude: snapshot.latitude,
+    height: snapshot.altitude * 1000,
+    zoom: Math.log2(40_000 / Math.max(0.05, snapshot.range)),
+    heading: snapshot.heading,
+    pitch: snapshot.tilt - 90,
+  };
 }
 
 export function EarthMap({
-  mode, layers, colorMode, mapStyle, flights, radarTileUrl, weatherOpacity,
-  selectedFlight, trackedFlight, quality, onFlightClick, onViewStateChange,
-  onWeatherTileError, t,
+  mode, layers, colorMode, mapStyle, flights, snapshotTime, radarTileUrl, radarCenter, radarRadiusKm,
+  weatherOpacity, selection, tracked, quality, onPick, onViewStateChange, onWeatherTileError,
+  onTrackingInterrupted, onOpenSettings, onEngineReady, t,
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [viewer, setViewer] = useState<Viewer | null>(null);
-  const [nightLighting, setNightLighting] = useState(false);
-  const [terrainState, setTerrainState] = useState<TerrainState>('loading');
-  const [cameraState, setCameraState] = useState<GlobeViewState>({
-    ...INITIAL_CAMERA,
-    zoom: 1.35,
-  });
-  const visibleFlights = useMemo(
-    () => flights.slice(0, quality.maxFlights),
-    [flights, quality.maxFlights],
-  );
-  const effectiveMapStyle = mapStyleForView(
-    mapStyle,
-    cameraState.latitude,
-    cameraState.height,
-  );
+  const [engine, setEngine] = useState<GlobeEngine | null>(null);
+  const [camera, setCamera] = useState<CameraSnapshot>({ longitude: 139.76, latitude: 35.68, heading: 0, tilt: 0, range: 18_000, altitude: 18_000 });
+  const [hover, setHover] = useState<HoverInfo | null>(null);
+  const [realisticLighting, setRealisticLighting] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const callbacks = useRef({ onPick, onViewStateChange, onTrackingInterrupted, onEngineReady });
+  callbacks.current = { onPick, onViewStateChange, onTrackingInterrupted, onEngineReady };
+  const flightsRef = useRef(new Map<string, FlightRecord>());
+  const initialQuality = useRef(quality);
 
   useEffect(() => {
     if (!containerRef.current) return;
-
-    const nextViewer = new Viewer(containerRef.current, {
-      animation: false,
-      baseLayer: false,
-      baseLayerPicker: false,
-      fullscreenButton: false,
-      geocoder: false,
-      homeButton: false,
-      infoBox: false,
-      navigationHelpButton: false,
-      scene3DOnly: true,
-      sceneModePicker: false,
-      selectionIndicator: false,
-      shouldAnimate: false,
-      timeline: false,
-      terrainProvider: new EllipsoidTerrainProvider(),
-      requestRenderMode: true,
-      maximumRenderTimeChange: Number.POSITIVE_INFINITY,
-    });
-
-    const {scene} = nextViewer;
-    const ellipsoidTerrain = nextViewer.terrainProvider;
-    let detailedTerrain: ArcGISTiledElevationTerrainProvider | null = null;
-    let activeTerrainMode: TerrainMode = 'ellipsoid';
-    configureEarthCamera(nextViewer);
-    const removeOrbitControls = installEarthOrbitControls(nextViewer);
-    scene.globe.depthTestAgainstTerrain = true;
-    // Cesium's ground-atmosphere shader produces a circular pole singularity
-    // on the WGS84 ellipsoid in high orbital views. The sky atmosphere still
-    // provides the blue limb without painting a grey disc onto Antarctica.
-    scene.globe.showGroundAtmosphere = false;
-    scene.globe.baseColor = Color.fromCssColorString('#15394a');
-    scene.globe.showSkirts = true;
-    scene.fog.enabled = true;
-    scene.fog.density = 0.00012;
-    scene.postProcessStages.fxaa.enabled = true;
-    if ('msaaSamples' in scene) scene.msaaSamples = Math.min(4, quality.dpr > 1 ? 4 : 2);
-
-    const updateCameraState = () => {
-      if (nextViewer.isDestroyed()) return;
-      const state = readEarthCamera(nextViewer);
-      const nextTerrainMode = terrainModeForView({
-        height: state.height,
-        latitude: state.latitude,
-        detailedTerrainAvailable: detailedTerrain !== null,
+    let instance: GlobeEngine;
+    try {
+      instance = new GlobeEngine(containerRef.current, initialQuality.current, E2E_OFFLINE_GLOBE, {
+        onCamera: (snapshot) => setCamera(snapshot),
+        onCameraSettled: (snapshot) => {
+          setCamera(snapshot);
+          callbacks.current.onViewStateChange(toViewState(snapshot));
+        },
+        onPick: (result) => callbacks.current.onPick(result),
+        onHover: setHover,
+        onTrackingInterrupted: () => callbacks.current.onTrackingInterrupted(),
       });
-      if (nextTerrainMode !== activeTerrainMode) {
-        activeTerrainMode = nextTerrainMode;
-        nextViewer.terrainProvider = nextTerrainMode === 'terrain'
-          ? detailedTerrain!
-          : ellipsoidTerrain;
-        setTerrainState(nextTerrainMode);
-      }
-      setCameraState(state);
-      onViewStateChange(state);
-    };
-    nextViewer.camera.moveEnd.addEventListener(updateCameraState);
-    nextViewer.camera.setView({
-      destination: Cartesian3.fromDegrees(
-        INITIAL_CAMERA.longitude,
-        INITIAL_CAMERA.latitude,
-        INITIAL_CAMERA.height,
-      ),
-      orientation: {heading: 0, pitch: -Math.PI / 2, roll: 0},
-    });
-    updateCameraState();
-    setViewer(nextViewer);
-
-    let cancelled = false;
-    if (E2E_OFFLINE_GLOBE) {
-      setTerrainState('ellipsoid');
-    } else {
-      ArcGISTiledElevationTerrainProvider.fromUrl(TERRAIN_URL)
-        .then((terrainProvider) => {
-          if (cancelled || nextViewer.isDestroyed()) return;
-          detailedTerrain = terrainProvider;
-          updateCameraState();
-          scene.requestRender();
-        })
-        .catch(() => {
-          if (!cancelled) setTerrainState('ellipsoid');
-        });
+    } catch (cause) {
+      setError((cause as Error).message);
+      return;
     }
-
+    instance.flightLookup = (id) => flightsRef.current.get(id);
+    if (import.meta.env.DEV) (window as unknown as { __globe?: GlobeEngine }).__globe = instance;
+    setEngine(instance);
+    callbacks.current.onEngineReady?.(instance);
+    callbacks.current.onViewStateChange(toViewState(instance.snapshot()));
     return () => {
-      cancelled = true;
-      removeOrbitControls();
-      nextViewer.camera.moveEnd.removeEventListener(updateCameraState);
-      setViewer(null);
-      nextViewer.destroy();
+      callbacks.current.onEngineReady?.(null);
+      setEngine(null);
+      instance.dispose();
     };
-  }, [onViewStateChange, quality.dpr]);
+  }, []);
+
+  useEffect(() => { engine?.applyQuality(quality); }, [engine, quality]);
+  useEffect(() => { engine?.setMapStyle(mapStyle); }, [engine, mapStyle]);
+  useEffect(() => { engine?.setRealisticLighting(realisticLighting); }, [engine, realisticLighting]);
+  useEffect(() => { engine?.setLayers(layers); }, [engine, layers]);
+  useEffect(() => { engine?.setColorMode(colorMode); }, [engine, colorMode]);
+  useEffect(() => { engine?.setSelection(selection); }, [engine, selection]);
+
+  const colorModeRef = useRef(colorMode);
+  colorModeRef.current = colorMode;
+  useEffect(() => {
+    if (!engine) return;
+    flightsRef.current = new Map(flights.map((flight) => [flight.id, flight]));
+    engine.setFlights(flights.slice(0, quality.maxFlights), Date.parse(snapshotTime) || Date.now(), colorModeRef.current);
+  }, [engine, flights, snapshotTime, quality.maxFlights]);
 
   useEffect(() => {
-    if (!viewer) return;
-    let cancelled = false;
-    applyMapStyle(viewer, effectiveMapStyle, E2E_OFFLINE_GLOBE).catch(() => {
-      if (!cancelled && !viewer.isDestroyed()) applyMapStyle(viewer, 'opengrid', E2E_OFFLINE_GLOBE).catch(() => undefined);
-    });
-    return () => { cancelled = true; };
-  }, [effectiveMapStyle, viewer]);
+    if (!engine) return;
+    if (!layers.weather) engine.setWeather({ mode: 'off' }, weatherOpacity);
+    else if (mode === 'demo') engine.setWeather({ mode: 'demo' }, weatherOpacity);
+    else if (radarTileUrl && !E2E_OFFLINE_GLOBE) {
+      engine.setWeather({ mode: 'radar', url: radarTileUrl, center: radarCenter, radiusKm: radarRadiusKm, onError: onWeatherTileError }, weatherOpacity);
+    } else engine.setWeather({ mode: 'off' }, weatherOpacity);
+  }, [engine, layers.weather, mode, radarTileUrl, radarCenter, radarRadiusKm, weatherOpacity, onWeatherTileError]);
 
+  const trackedRef = useRef(tracked);
+  trackedRef.current = tracked;
+  const trackedKey = tracked ? `${tracked.kind}:${tracked.id}` : '';
   useEffect(() => {
-    if (!viewer || !layers.weather || mode !== 'live-beta' || !radarTileUrl) return;
-    return addWeatherLayer(viewer, radarTileUrl, weatherOpacity, onWeatherTileError);
-  }, [layers.weather, mode, onWeatherTileError, radarTileUrl, viewer, weatherOpacity]);
+    // Re-lock only when the tracked object changes, not on every data refresh.
+    engine?.track(trackedRef.current);
+  }, [engine, trackedKey]);
 
-  useEffect(() => {
-    if (!viewer) return;
-    return installSceneContent({
-      viewer,
-      flights: visibleFlights,
-      colorMode,
-      showFlights: layers.flights,
-      showTrails: layers.flightTrails,
-      showAirports: layers.airports,
-      showLabels: layers.labels,
-      cameraHeight: cameraState.height,
-      maximumDetailedAircraft: quality.maxAircraftModels,
-      selectedFlightId: selectedFlight?.id ?? null,
-    });
-  }, [cameraState.height, colorMode, layers, quality.maxAircraftModels, selectedFlight?.id, viewer, visibleFlights]);
-
-  useEffect(() => {
-    if (!viewer || !layers.satellites || cameraState.height < 900_000) return;
-    return installSatellitePreview(viewer, cameraState.height);
-  }, [cameraState.height, layers.satellites, viewer]);
-
-  useEffect(() => {
-    if (!viewer) return;
-    return installFlightSelection(viewer, selectedFlight, colorMode, cameraState.height);
-  }, [cameraState.height, colorMode, selectedFlight, viewer]);
-
-  useEffect(() => {
-    if (!viewer) return;
-    viewer.scene.globe.enableLighting = nightLighting;
-    viewer.scene.requestRender();
-  }, [nightLighting, viewer]);
-
-  useEffect(() => {
-    if (!viewer) return;
-    const clickHandler = new ScreenSpaceEventHandler(viewer.scene.canvas);
-    clickHandler.setInputAction((event: {position: {x: number; y: number}}) => {
-      const picked = viewer.scene.pick(event.position) as {id?: unknown} | undefined;
-      if (isFlightRecord(picked?.id)) onFlightClick(picked.id);
-    }, ScreenSpaceEventType.LEFT_CLICK);
-    return () => clickHandler.destroy();
-  }, [onFlightClick, viewer]);
-
-  const trackedFlightId = trackedFlight?.id ?? null;
-  useEffect(() => {
-    if (!viewer || !trackedFlight) return;
-    const target = Cartesian3.fromDegrees(
-        trackedFlight.longitude,
-        trackedFlight.latitude,
-        Math.max(20, trackedFlight.altitude),
-      );
-    viewer.camera.lookAt(
-      target,
-      new HeadingPitchRange(
-        CesiumMath.toRadians(trackedFlight.heading + 180),
-        CesiumMath.toRadians(-22),
-        18_000,
-      ),
-    );
-    // Cesium's local target frame is useful for computing the view, but the
-    // standard Earth controls expect the global frame afterwards.
-    viewer.camera.lookAtTransform(Matrix4.IDENTITY);
-    viewer.scene.requestRender();
-    // Tracking is a lock, so follow each position update without replaying an
-    // animated fly-to that would fight the user's camera every second.
-  }, [
-    terrainState,
-    trackedFlight?.altitude,
-    trackedFlight?.heading,
-    trackedFlight?.latitude,
-    trackedFlight?.longitude,
-    trackedFlightId,
-    viewer,
-  ]);
-
-  const zoomCamera = (inward: boolean) => {
-    if (!viewer) return;
-    const height = viewer.camera.positionCartographic.height;
-    const amount = Math.max(500, height * (inward ? 0.38 : 0.55));
-    if (inward) viewer.camera.zoomIn(amount);
-    else viewer.camera.zoomOut(amount);
-    const state = readEarthCamera(viewer);
-    setCameraState(state);
-    onViewStateChange(state);
-    viewer.scene.requestRender();
-  };
+  const viewState = toViewState(camera);
 
   return (
     <div
       className="map-surface"
-      data-engine="cesium"
+      data-engine="three"
       data-mode={mode}
       data-polar-coverage="full"
-      data-basemap-coverage={effectiveMapStyle === 'satellite-global'
-        ? 'global-detail'
-        : effectiveMapStyle === mapStyle
-          ? 'detail'
-          : Math.abs(cameraState.latitude) >= POLAR_BASEMAP_LATITUDE
-            ? 'polar-safe'
-            : 'orbital-safe'}
-      data-terrain={terrainState}
-      data-aircraft-lod={aircraftLodForHeight(cameraState.height)}
-      data-satellite-render-mode={layers.satellites
-        ? cameraState.height >= 900_000 ? 'models' : 'hidden-atmosphere'
-        : 'hidden'}
-      data-satellite-count={layers.satellites ? 18 : 0}
-      data-selected-aircraft-model={Boolean(
-        selectedFlight && cameraState.height < 12_000_000,
-      )}
-      data-zoom={cameraState.zoom.toFixed(3)}
-      data-camera-height={cameraState.height.toFixed(0)}
-      data-longitude={cameraState.longitude.toFixed(5)}
-      data-latitude={cameraState.latitude.toFixed(5)}
-      data-heading={cameraState.heading.toFixed(2)}
-      data-pitch={cameraState.pitch.toFixed(2)}
+      data-map-style={mapStyle}
+      data-zoom={viewState.zoom.toFixed(3)}
+      data-camera-height={viewState.height.toFixed(0)}
+      data-longitude={viewState.longitude.toFixed(5)}
+      data-latitude={viewState.latitude.toFixed(5)}
+      data-heading={viewState.heading.toFixed(2)}
+      data-pitch={viewState.pitch.toFixed(2)}
+      data-tracking={tracked ? tracked.kind : 'none'}
     >
-      <div ref={containerRef} className="cesium-container" aria-label={t('controls.globe')} />
-      <div className="globe-vignette" aria-hidden="true" />
+      <div ref={containerRef} className="globe-container" />
+      {error && <div className="globe-error" role="alert">{t('globe.unsupported')}</div>}
+      {hover && (
+        <div className="globe-tooltip" style={{ left: hover.x, top: hover.y }}>
+          <strong>{hover.title}</strong>
+          {hover.subtitle && <span>{hover.subtitle}</span>}
+        </div>
+      )}
       <div className="camera-hint">{t('controls.tiltHint')}</div>
       <MapControls
-        onZoomIn={() => zoomCamera(true)}
-        onZoomOut={() => zoomCamera(false)}
-        onResetView={() => viewer && resetEarthCamera(viewer)}
-        nightMode={nightLighting}
-        onToggleNight={() => setNightLighting((value) => !value)}
+        heading={camera.heading}
+        onZoomIn={() => engine?.zoom(true)}
+        onZoomOut={() => engine?.zoom(false)}
+        onResetView={() => engine?.resetView()}
+        onResetNorth={() => engine?.resetNorth()}
+        lighting={realisticLighting}
+        onToggleLighting={() => setRealisticLighting((value) => !value)}
+        onOpenSettings={onOpenSettings}
         t={t}
       />
+      <MiniGlobe longitude={camera.longitude} latitude={camera.latitude} range={camera.range} heading={camera.heading} label={t('controls.miniGlobe')} />
     </div>
   );
 }
