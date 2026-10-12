@@ -83,8 +83,10 @@ test('display settings change quality presets and object limits', async ({ page 
   await page.getByRole('button', { name: 'Display settings' }).click();
   const dialog = page.getByRole('dialog', { name: 'Display settings' });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: /Ultra/ }).click();
-  await expect(dialog.getByRole('button', { name: /Ultra/ })).toHaveAttribute('aria-pressed', 'true');
+  // CI renders with software WebGL, so exercise preset switching with a light preset.
+  await dialog.getByRole('button', { name: /Balanced/ }).click();
+  await expect(dialog.getByRole('button', { name: /Balanced/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(dialog.getByRole('button', { name: /Ultra/ })).toHaveAttribute('aria-pressed', 'false');
   await dialog.getByLabel('Anti-aliasing').selectOption('2');
   await expect(dialog.getByText('Custom settings are active.')).toBeVisible();
   await page.keyboard.press('Escape');
