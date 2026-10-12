@@ -27,12 +27,9 @@ export function createApp({ dataService, staticDir, logger }: AppOptions): Expre
       "frame-ancestors 'none'",
       "img-src 'self' data: blob: https:",
       "object-src 'none'",
-      // Cesium's bundled terrain and texture decoders compile WebAssembly and
-      // generated functions at runtime. Keep scripts same-origin while
-      // allowing the decoder runtime required by the globe renderer.
-      "script-src 'self' 'unsafe-eval'",
+      "script-src 'self'",
       "style-src 'self' 'unsafe-inline'",
-      "worker-src 'self' blob:",
+      "worker-src 'self'",
     ].join('; '));
     res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=()');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
