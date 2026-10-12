@@ -1,85 +1,194 @@
-export type SatelliteCategory = 'station' | 'earth-observation' | 'navigation' | 'communications';
+import { siderealAngle } from '../globe/astro';
 
-type SatelliteOrbit = {
+// A deterministic, physically plausible demo constellation. Orbits are
+// circular Keplerian orbits propagated in an inertial frame and rotated by
+// real sidereal time, so ground tracks and day/night geometry look right.
+// Positions are simulated and are never presented as live telemetry.
+
+export type SatelliteCategory =
+  | 'station'
+  | 'starlink'
+  | 'broadband'
+  | 'navigation'
+  | 'geostationary'
+  | 'earth-observation';
+
+export type SatelliteModelKind = 'station' | 'starlink' | 'satellite';
+
+export interface SatelliteRecord {
   id: string;
   name: string;
   category: SatelliteCategory;
-  altitude: number;
+  model: SatelliteModelKind;
+  altitudeKm: number;
   inclination: number;
-  periodMinutes: number;
-  ascendingNode: number;
+  raan: number;
   phase: number;
-};
+  periodMinutes: number;
+}
 
-export type SatellitePreviewRecord = SatelliteOrbit & {
+export interface SatelliteState {
   longitude: number;
   latitude: number;
-  heading: number;
-};
+  altitudeKm: number;
+  speedKmS: number;
+}
 
-const ORBITS: SatelliteOrbit[] = [
-  {id: 'station-01', name: 'Orbital Station', category: 'station', altitude: 420_000, inclination: 51.6, periodMinutes: 92.7, ascendingNode: 18, phase: 12},
-  {id: 'leo-01', name: 'LEO Explorer 01', category: 'earth-observation', altitude: 540_000, inclination: 97.4, periodMinutes: 95.3, ascendingNode: -148, phase: 26},
-  {id: 'leo-02', name: 'LEO Explorer 02', category: 'earth-observation', altitude: 610_000, inclination: 97.8, periodMinutes: 96.8, ascendingNode: -82, phase: 171},
-  {id: 'leo-03', name: 'LEO Explorer 03', category: 'earth-observation', altitude: 705_000, inclination: 98.2, periodMinutes: 98.8, ascendingNode: 34, phase: 282},
-  {id: 'leo-04', name: 'Climate Mapper 01', category: 'earth-observation', altitude: 824_000, inclination: 98.7, periodMinutes: 101.1, ascendingNode: 112, phase: 74},
-  {id: 'leo-05', name: 'Climate Mapper 02', category: 'earth-observation', altitude: 760_000, inclination: 98.5, periodMinutes: 99.8, ascendingNode: 167, phase: 214},
-  {id: 'com-01', name: 'Relay 01', category: 'communications', altitude: 1_150_000, inclination: 53, periodMinutes: 108.5, ascendingNode: -165, phase: 41},
-  {id: 'com-02', name: 'Relay 02', category: 'communications', altitude: 1_150_000, inclination: 53, periodMinutes: 108.5, ascendingNode: -105, phase: 161},
-  {id: 'com-03', name: 'Relay 03', category: 'communications', altitude: 1_150_000, inclination: 53, periodMinutes: 108.5, ascendingNode: -45, phase: 281},
-  {id: 'com-04', name: 'Relay 04', category: 'communications', altitude: 1_150_000, inclination: 53, periodMinutes: 108.5, ascendingNode: 15, phase: 101},
-  {id: 'com-05', name: 'Relay 05', category: 'communications', altitude: 1_150_000, inclination: 53, periodMinutes: 108.5, ascendingNode: 75, phase: 221},
-  {id: 'com-06', name: 'Relay 06', category: 'communications', altitude: 1_150_000, inclination: 53, periodMinutes: 108.5, ascendingNode: 135, phase: 341},
-  {id: 'nav-01', name: 'Navigation 01', category: 'navigation', altitude: 20_200_000, inclination: 55, periodMinutes: 718, ascendingNode: -150, phase: 22},
-  {id: 'nav-02', name: 'Navigation 02', category: 'navigation', altitude: 20_200_000, inclination: 55, periodMinutes: 718, ascendingNode: -90, phase: 142},
-  {id: 'nav-03', name: 'Navigation 03', category: 'navigation', altitude: 20_200_000, inclination: 55, periodMinutes: 718, ascendingNode: -30, phase: 262},
-  {id: 'nav-04', name: 'Navigation 04', category: 'navigation', altitude: 23_222_000, inclination: 56, periodMinutes: 844, ascendingNode: 30, phase: 82},
-  {id: 'nav-05', name: 'Navigation 05', category: 'navigation', altitude: 23_222_000, inclination: 56, periodMinutes: 844, ascendingNode: 90, phase: 202},
-  {id: 'nav-06', name: 'Navigation 06', category: 'navigation', altitude: 23_222_000, inclination: 56, periodMinutes: 844, ascendingNode: 150, phase: 322},
+const MU = 398_600.4418;
+const EARTH_RADIUS_KM = 6371;
+const EPOCH_MS = Date.UTC(2026, 0, 1);
+const DEG = Math.PI / 180;
+const SIDEREAL_DAY_MIN = 1436.0682;
+
+function periodFor(altitudeKm: number) {
+  const radius = EARTH_RADIUS_KM + altitudeKm;
+  return (2 * Math.PI * Math.sqrt(radius ** 3 / MU)) / 60;
+}
+
+function record(
+  id: string, name: string, category: SatelliteCategory, model: SatelliteModelKind,
+  altitudeKm: number, inclination: number, raan: number, phase: number, periodMinutes = periodFor(altitudeKm),
+): SatelliteRecord {
+  return { id, name, category, model, altitudeKm, inclination, raan, phase, periodMinutes };
+}
+
+function walker(prefix: string, label: string, category: SatelliteCategory, model: SatelliteModelKind,
+  altitudeKm: number, inclination: number, planes: number, perPlane: number, raanOffset = 0, phasing = 1, startNumber = 1) {
+  const list: SatelliteRecord[] = [];
+  for (let p = 0; p < planes; p++) {
+    for (let s = 0; s < perPlane; s++) {
+      const n = startNumber + p * perPlane + s;
+      list.push(record(
+        `${prefix}-${n}`,
+        `${label}-${String(n).padStart(4, '0')}`,
+        category,
+        model,
+        altitudeKm,
+        inclination,
+        raanOffset + (360 / planes) * p,
+        (360 / perPlane) * s + (360 / (planes * perPlane)) * phasing * p,
+      ));
+    }
+  }
+  return list;
+}
+
+const GEO_EPOCH_ANGLE = siderealAngle(new Date(EPOCH_MS)) / DEG;
+
+function geostationary(): SatelliteRecord[] {
+  const slots = [-135, -129, -122, -116, -101, -97, -91, -87, -75, -61, -53, -45, -37, -30, -22, -15, -8, -1, 5, 9, 13, 16, 19, 23, 28, 33, 39, 45, 52, 57, 63, 69, 75, 83, 88, 93, 100, 105, 110, 116, 122, 128, 132, 136, 140, 144, 150, 154, 158, 163, 166, 172, 177, -178, -170, -160, -150, -144];
+  return slots.map((lon, index) => record(
+    `geo-${index + 1}`, `GEO Comsat ${index + 1}`, 'geostationary', 'satellite',
+    35_786, 0.05, 0, lon + GEO_EPOCH_ANGLE, SIDEREAL_DAY_MIN,
+  ));
+}
+
+function sunSynchronous(): SatelliteRecord[] {
+  const names = ['Sentinel', 'Landsat', 'Terra', 'Aqua', 'NOAA', 'MetOp', 'Himawari-LEO', 'WorldView', 'Pleiades', 'Suomi'];
+  return Array.from({ length: 48 }, (_, i) => {
+    const altitude = 480 + ((i * 53) % 340);
+    const inclination = 97.2 + (altitude - 480) / 340 * 1.6;
+    return record(`eo-${i + 1}`, `${names[i % names.length]} ${Math.floor(i / names.length) + 1}`, 'earth-observation', 'satellite',
+      altitude, inclination, (i * 47) % 360, (i * 137) % 360);
+  });
+}
+
+const FIXED: SatelliteRecord[] = [
+  record('iss', 'ISS', 'station', 'station', 418, 51.64, 32, 18),
+  record('tiangong', 'Tiangong', 'station', 'station', 386, 41.47, 214, 133),
+  ...walker('gps', 'GPS', 'navigation', 'satellite', 20_180, 55, 6, 5, 17, 1),
+  ...walker('galileo', 'Galileo', 'navigation', 'satellite', 23_222, 56, 3, 8, 40, 1),
+  ...walker('glonass', 'GLONASS', 'navigation', 'satellite', 19_130, 64.8, 3, 8, 75, 1),
+  ...geostationary(),
+  ...sunSynchronous(),
+  ...walker('iridium', 'Iridium', 'broadband', 'satellite', 780, 86.4, 6, 11, 0, 2),
 ];
 
-const EARTH_ROTATION_MS = 86_164_000;
-const radians = (degrees: number) => degrees * Math.PI / 180;
-const degrees = (angle: number) => angle * 180 / Math.PI;
-const wrapLongitude = (longitude: number) => ((longitude + 540) % 360) - 180;
+const SCALABLE: SatelliteRecord[][] = [
+  walker('oneweb', 'OneWeb', 'broadband', 'starlink', 1_200, 87.9, 12, 36, 4, 1),
+  walker('starlink-a', 'Starlink', 'starlink', 'starlink', 550, 53, 72, 22, 0, 17, 1000),
+  walker('starlink-b', 'Starlink', 'starlink', 'starlink', 540, 53.2, 72, 22, 2.5, 13, 3000),
+  walker('starlink-c', 'Starlink', 'starlink', 'starlink', 570, 70, 36, 20, 1, 11, 5000),
+  walker('starlink-d', 'Starlink', 'starlink', 'starlink', 560, 97.6, 10, 40, 7, 3, 6000),
+];
 
-function positionForOrbit(orbit: SatelliteOrbit, timeMs: number) {
-  const orbitalPeriodMs = orbit.periodMinutes * 60_000;
-  const orbitalAngle = radians(orbit.phase)
-    + ((timeMs % orbitalPeriodMs) / orbitalPeriodMs) * Math.PI * 2;
-  const inclination = radians(orbit.inclination);
-  const latitude = Math.asin(Math.sin(inclination) * Math.sin(orbitalAngle));
-  const argument = Math.atan2(
-    Math.cos(inclination) * Math.sin(orbitalAngle),
-    Math.cos(orbitalAngle),
-  );
-  const earthRotation = ((timeMs % EARTH_ROTATION_MS) / EARTH_ROTATION_MS) * Math.PI * 2;
+const SCALABLE_TOTAL = SCALABLE.reduce((sum, group) => sum + group.length, 0);
+
+const cache = new Map<number, SatelliteRecord[]>();
+
+/** Deterministic constellation limited to maxCount, thinning mega-constellations evenly. */
+export function buildConstellation(maxCount: number): SatelliteRecord[] {
+  const cached = cache.get(maxCount);
+  if (cached) return cached;
+  const remaining = Math.max(0, maxCount - FIXED.length);
+  const ratio = Math.min(1, remaining / SCALABLE_TOTAL);
+  const list = [...FIXED.slice(0, maxCount)];
+  const takes = SCALABLE.map((group) => Math.floor(group.length * ratio));
+  let leftover = Math.min(remaining, SCALABLE_TOTAL) - takes.reduce((sum, take) => sum + take, 0);
+  for (let i = 0; leftover > 0; i = (i + 1) % SCALABLE.length) {
+    if (takes[i] < SCALABLE[i].length) {
+      takes[i]++;
+      leftover--;
+    }
+  }
+  for (const [index, group] of SCALABLE.entries()) {
+    const take = takes[index];
+    if (!take) continue;
+    const stride = group.length / take;
+    for (let i = 0; i < take; i++) list.push(group[Math.floor(i * stride)]);
+  }
+  cache.set(maxCount, list);
+  return list;
+}
+
+/** Inertial (equatorial) position in km. */
+export function satelliteInertialPosition(satellite: SatelliteRecord, timeMs: number, out: { x: number; y: number; z: number }) {
+  const radius = EARTH_RADIUS_KM + satellite.altitudeKm;
+  const minutes = (timeMs - EPOCH_MS) / 60_000;
+  const u = (satellite.phase + (360 * minutes) / satellite.periodMinutes) * DEG;
+  const i = satellite.inclination * DEG;
+  const raan = satellite.raan * DEG;
+  const cosU = Math.cos(u);
+  const sinU = Math.sin(u);
+  const cosR = Math.cos(raan);
+  const sinR = Math.sin(raan);
+  const cosI = Math.cos(i);
+  out.x = radius * (cosR * cosU - sinR * sinU * cosI);
+  out.y = radius * (sinR * cosU + cosR * sinU * cosI);
+  out.z = radius * (sinU * Math.sin(i));
+  return out;
+}
+
+/** Earth-fixed world position (x = 90°E, y = north, z = 0°E) in km. */
+export function satelliteWorldPosition(satellite: SatelliteRecord, timeMs: number, sidereal: number, out: { x: number; y: number; z: number }) {
+  const p = satelliteInertialPosition(satellite, timeMs, out);
+  const cos = Math.cos(sidereal);
+  const sin = Math.sin(sidereal);
+  const ex = cos * p.x + sin * p.y;
+  const ey = -sin * p.x + cos * p.y;
+  const ez = p.z;
+  out.x = ey;
+  out.y = ez;
+  out.z = ex;
+  return out;
+}
+
+export function satelliteState(satellite: SatelliteRecord, timeMs: number): SatelliteState {
+  const p = satelliteWorldPosition(satellite, timeMs, siderealAngle(new Date(timeMs)), { x: 0, y: 0, z: 0 });
+  const radius = Math.hypot(p.x, p.y, p.z);
   return {
-    longitude: wrapLongitude(orbit.ascendingNode + degrees(argument - earthRotation)),
-    latitude: degrees(latitude),
+    longitude: Math.atan2(p.x, p.z) / DEG,
+    latitude: Math.asin(p.y / radius) / DEG,
+    altitudeKm: radius - EARTH_RADIUS_KM,
+    speedKmS: (2 * Math.PI * radius) / (satellite.periodMinutes * 60),
   };
 }
 
-export function getSatellitePreview(timeMs: number): SatellitePreviewRecord[] {
-  return ORBITS.map((orbit) => {
-    const position = positionForOrbit(orbit, timeMs);
-    const next = positionForOrbit(orbit, timeMs + 5_000);
-    const heading = (degrees(Math.atan2(
-      radians(next.longitude - position.longitude) * Math.cos(radians(position.latitude)),
-      radians(next.latitude - position.latitude),
-    )) + 360) % 360;
-    return {...orbit, ...position, heading};
-  });
-}
-
-export function getSatelliteOrbitPath(
-  satellite: SatellitePreviewRecord,
-  timeMs: number,
-  samples = 96,
-) {
-  const periodMs = satellite.periodMinutes * 60_000;
-  return Array.from({length: samples + 1}, (_, index) => {
-    const position = positionForOrbit(satellite, timeMs + (index / samples) * periodMs);
-    return [position.longitude, position.latitude, satellite.altitude] as const;
-  });
-}
+export const SATELLITE_COLORS: Record<SatelliteCategory, string> = {
+  station: '#5dff9b',
+  starlink: '#b9d4ff',
+  broadband: '#7fe7ff',
+  navigation: '#c58bff',
+  geostationary: '#ffb35c',
+  'earth-observation': '#61e6c8',
+};
