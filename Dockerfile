@@ -17,6 +17,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
     && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server-dist ./server-dist
+RUN mkdir -p /app/.cache && chown node:node /app/.cache
 
 USER node
 EXPOSE 8080
