@@ -3,8 +3,23 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app';
 import { createAtlasDataService } from './atlasData';
 import { Connections, validatePreferences } from './connections';
+import { AirplanesLiveProvider } from '../providers/airplanesLive';
+import { ProviderError } from '../providers/errors';
 
 describe('private provider connections', () => {
+  it('preserves paid provider cooldown when a client reconnects', async () => {
+    const upstream = vi.spyOn(AirplanesLiveProvider.prototype, 'fetchFlights').mockRejectedValue(new ProviderError('rate limited', 429, 3600));
+    const connections = new Connections();
+    try {
+      const preferences = { flightSource: 'adsbexchange' as const, shipSource: 'fintraffic' as const, rapidApiKey: 'private-key' };
+      const a = connections.create(preferences);
+      await connections.get(a.token)!.flights.getFlights({ latitude: 35, longitude: 140, radiusNm: 150 });
+      connections.remove(a.token);
+      const b = connections.create({ ...preferences, rapidApiKey: 'private-key' });
+      expect((await connections.get(b.token)!.flights.getFlights({ latitude: 35, longitude: 140, radiusNm: 150 })).status).toBe('rate-limited');
+      expect(upstream).toHaveBeenCalledTimes(1);
+    } finally { connections.close(); upstream.mockRestore(); }
+  });
   it('shares the free provider cache and budget across sessions', () => {
     const free = createAtlasDataService();
     const connections = new Connections(free);
