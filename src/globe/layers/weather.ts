@@ -558,12 +558,12 @@ export class WeatherLayer {
     const active = profiles.flatMap((profile) => profile.levels.filter((level) => level.coverPercent >= 10).map((level) => ({ profile, level })));
     const perLevel = Math.max(1, Math.floor(this.budget / Math.max(1, active.length)));
     for (const { profile, level } of active) {
-      const count = Math.floor(perLevel * level.coverPercent / 100);
+      const size = Math.max(3, profile.footprintKm / 12);
+      const count = Math.min(Math.floor(perLevel * level.coverPercent / 100), Math.ceil(2 * (profile.footprintKm / size) ** 2 * level.coverPercent / 100));
       for (let i = 0; i < count; i++) {
         const [lon, lat] = offsetLonLat(profile.longitude, profile.latitude, (random() - 0.5) * profile.footprintKm, (random() - 0.5) * profile.footprintKm);
         // Pressure-level altitude is modelled AMSL; radar intensity never sets height.
         const altitude = level.altitudeKm;
-        const size = Math.max(3, profile.footprintKm / 12);
         particles.push({ position: lonLatToVector(lon, lat, altitude), size, halfHeight: Math.max(0.01, Math.min(cloudHalfHeight(altitude, size), altitude - profile.groundAltitudeKm - 0.05)), opacity: 0.25 + level.coverPercent / 250, shade: level.pressureHpa >= 850 ? 0.3 : 0.1, swirlAxis: new Vector3(0, 1, 0), swirlRate: 0, lightning: 0, seed: random() * 10 });
       }
     }
