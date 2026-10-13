@@ -6,6 +6,16 @@ export function cloudHalfHeight(altitudeKm: number, widthKm: number): number {
   return Math.max(0.01, Math.min(4, widthKm * 0.025, altitudeKm - 0.05));
 }
 
+/** Conservative NDC extent used by the cloud proxy, including perspective shift. */
+export function cloudScreenExtent(centerInView: Vector3, normalInView: Vector3, horizontal: number, vertical: number, scaleX: number, scaleY: number) {
+  const distance = -centerInView.z;
+  const nearDepth = Math.max(0.001, distance - horizontal);
+  const extent = (component: number, coordinate: number, scale: number) =>
+    Math.sqrt(horizontal ** 2 * (1 - component ** 2) + vertical ** 2 * component ** 2) * scale / nearDepth
+    + Math.abs(coordinate * scale / distance) * horizontal / nearDepth;
+  return { x: extent(normalInView.x, centerInView.x, scaleX), y: extent(normalInView.y, centerInView.y, scaleY) };
+}
+
 /** CPU equivalent of the cloud shader's ellipsoid intersection, for geometry QA. */
 export function intersectCloud(origin: Vector3, direction: Vector3, center: Vector3, widthKm: number) {
   const normal = center.clone().normalize();
