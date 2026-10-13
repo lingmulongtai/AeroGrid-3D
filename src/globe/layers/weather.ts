@@ -129,7 +129,10 @@ void main() {
       + halfHeight * halfHeight * viewNormal.xy * viewNormal.xy);
     vec4 clip = projectionMatrix * mvPosition;
     vec2 scale = vec2(projectionMatrix[0][0], projectionMatrix[1][1]);
-    clip.xy += position.xy * extent / max(0.001, -mvPosition.z - radius) * scale * clip.w;
+    float nearDepth = max(0.001, -mvPosition.z - radius);
+    // Off-centre volumes also shift in perspective as their depth changes.
+    vec2 screenExtent = extent * scale * clip.w / nearDepth + abs(clip.xy) * radius / nearDepth;
+    clip.xy += position.xy * screenExtent;
     gl_Position = clip;
   }
 

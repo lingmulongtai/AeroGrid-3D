@@ -1,9 +1,23 @@
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { EARTH_RADIUS_KM, lonLatToVector } from '../geo';
-import { cloudHalfHeight, intersectCloud } from './cloudVolume';
+import { cloudHalfHeight, cloudScreenExtent, intersectCloud } from './cloudVolume';
 
 describe('physical cloud volumes', () => {
+  it('covers peripheral thin clouds when their front surface shifts in perspective', () => {
+    const center = new Vector3(1, 7, -10);
+    const bounds = cloudScreenExtent(center, new Vector3(0, 1, 0), 2, 0.4, 1, 1);
+    const centerY = 7 / 10;
+    const frontY = 7 / 8;
+    expect(centerY + 0.4 / 8).toBeLessThan(frontY); // The old centre-only bounds crop it.
+    expect(centerY + bounds.y).toBeGreaterThanOrEqual(frontY);
+    for (let i = 0; i < 360; i++) {
+      const angle = i * Math.PI / 180;
+      const point = center.clone().add(new Vector3(2 * Math.sin(angle), 0, 2 * Math.cos(angle)));
+      expect(Math.abs(point.x / -point.z - center.x / -center.z)).toBeLessThanOrEqual(bounds.x);
+      expect(Math.abs(point.y / -point.z - center.y / -center.z)).toBeLessThanOrEqual(bounds.y);
+    }
+  });
   it('keeps even wide low clouds above the globe at equator and poles', () => {
     for (const latitude of [-90, -60, 0, 60, 90]) {
       for (const altitude of [1, 2, 6, 15]) {
