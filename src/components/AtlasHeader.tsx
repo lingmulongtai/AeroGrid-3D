@@ -28,7 +28,7 @@ export function AtlasHeader({ mode, snapshot, count, loading, locale, t }: Atlas
     <header className="source-status" data-status={snapshot.status}>
       <span className="mode-badge">{mode === 'demo' ? t('mode.demo') : t('mode.live')}</span>
       <span className="status-indicator" aria-hidden="true" />
-      <span className="status-label">{t(STATUS_KEYS[snapshot.status])}</span>
+      <span className="status-label">{mode === 'demo' ? t('mode.demo') : t(STATUS_KEYS[snapshot.status])}</span>
       <span className="status-divider" />
       <span className="status-count"><Radio aria-hidden="true" /> {count.toLocaleString(locale)} </span>
       <span className="status-time">{t('status.updated', { value: `${updated} UTC` })}</span>
