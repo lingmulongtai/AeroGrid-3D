@@ -79,7 +79,6 @@ attribute float shade;
 attribute vec4 swirl;
 attribute vec3 cloudCenter;
 attribute float halfHeight;
-attribute float lightning;
 attribute float seed;
 uniform float time;
 uniform float pixelsPerRadian;
@@ -92,7 +91,6 @@ varying float vRotation;
 varying vec3 vCenter;
 varying vec3 vNormal;
 varying vec2 vRadii;
-varying float vFlash;
 
 vec3 rotateAround(vec3 p, vec3 axis, float angle) {
   float c = cos(angle);
@@ -141,10 +139,6 @@ void main() {
   float twilight = smoothstep(-0.12, 0.02, sunDot) * (1.0 - smoothstep(0.02, 0.22, sunDot));
   vec3 night = vec3(0.025, 0.032, 0.05);
   vColor = mix(night, mix(day, sunset, twilight * 0.85), light * (1.0 - nightStyle * 0.88));
-  float flash = lightning * pow(max(0.0, sin(time * (1.7 + seed * 2.3) + seed * 61.0)), 90.0);
-  vFlash = flash;
-  vColor += vec3(0.75, 0.82, 1.0) * flash * 3.5;
-
   float tinyFade = smoothstep(0.6, 2.2, pixels);
   vAlpha = opacity * tinyFade;
   vRotation = seed * 6.2831;
@@ -564,7 +558,6 @@ export class WeatherLayer {
     const opacities = new Float32Array(count);
     const shades = new Float32Array(count);
     const swirls = new Float32Array(count * 4);
-    const lightning = new Float32Array(count);
     const seeds = new Float32Array(count);
     const thicknesses = new Float32Array(count);
     particles.forEach((p, i) => {
@@ -573,7 +566,6 @@ export class WeatherLayer {
       opacities[i] = p.opacity;
       shades[i] = p.shade;
       swirls.set([p.swirlAxis.x, p.swirlAxis.y, p.swirlAxis.z, p.swirlRate], i * 4);
-      lightning[i] = p.lightning;
       seeds[i] = p.seed;
       thicknesses[i] = cloudHalfHeight(p.position.length() - EARTH_RADIUS_KM, p.size);
     });
@@ -587,7 +579,6 @@ export class WeatherLayer {
     geometry.setAttribute('shade', new InstancedBufferAttribute(shades, 1));
     geometry.setAttribute('swirl', new InstancedBufferAttribute(swirls, 4));
     geometry.setAttribute('seed', new InstancedBufferAttribute(seeds, 1));
-    geometry.setAttribute('lightning', new InstancedBufferAttribute(lightning, 1));
     geometry.setAttribute('halfHeight', new InstancedBufferAttribute(thicknesses, 1));
     geometry.instanceCount = count;
     this.clouds.geometry.dispose();

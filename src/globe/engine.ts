@@ -228,7 +228,7 @@ export class GlobeEngine {
     const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: this.quality.msaa });
     this.composer = new EffectComposer(this.renderer, target);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloomPass = new UnrealBloomPass(new Vector2(1, 1), 0.5, 0.55, 0.9);
+    this.bloomPass = new UnrealBloomPass(new Vector2(1, 1), 0.28, 0.4, 1.15);
     this.bloomPass.enabled = this.quality.bloom;
     this.composer.addPass(this.bloomPass);
     this.composer.addPass(new OutputPass());
