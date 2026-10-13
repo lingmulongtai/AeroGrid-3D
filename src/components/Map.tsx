@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AppMode, FlightRecord } from '../../shared/contracts';
-import type { CloudProfile } from '../../shared/live';
+import type { CloudProfile, PublicCamera, ShipRecord } from '../../shared/live';
 import type { SatelliteRecord } from '../data/satellites';
 import type { Translator } from '../i18n';
 import type { LayerVisibility } from '../types/layers';
@@ -46,6 +46,8 @@ interface MapProps {
   t: Translator;
   satellites: SatelliteRecord[];
   cloudProfiles: CloudProfile[];
+  ships: ShipRecord[];
+  cameras: PublicCamera[];
 }
 
 const E2E_OFFLINE_GLOBE = import.meta.env.VITE_E2E === 'true';
@@ -65,7 +67,7 @@ export function EarthMap({
   mode, layers, colorMode, mapStyle, flights, snapshotTime, radarTileUrl, radarCenter, radarRadiusKm,
   weatherOpacity, selection, tracked, quality, onPick, onViewStateChange, onWeatherTileError,
   onTrackingInterrupted, onOpenSettings, onEngineReady, t,
-  satellites, cloudProfiles,
+  satellites, cloudProfiles, ships, cameras,
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [engine, setEngine] = useState<GlobeEngine | null>(null);
@@ -115,6 +117,7 @@ export function EarthMap({
   useEffect(() => { engine?.setColorMode(colorMode); }, [engine, colorMode]);
   useEffect(() => { engine?.setSelection(selection); }, [engine, selection]);
   useEffect(() => { engine?.setSatellites(satellites); }, [engine, satellites]);
+  useEffect(() => { engine?.setPublicContacts(ships, cameras); }, [engine, ships, cameras]);
 
   const colorModeRef = useRef(colorMode);
   colorModeRef.current = colorMode;
