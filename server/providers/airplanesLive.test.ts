@@ -38,6 +38,28 @@ describe('normalizeAirplanesLiveAircraft', () => {
 });
 
 describe('AirplanesLiveProvider', () => {
+  it('uses the keyless adsb.lol endpoint and the actual position reception age', async () => {
+    const fetchFn = vi.fn(async () => Response.json({ ac: [], now: Date.now() }));
+    const provider = new AirplanesLiveProvider(fetchFn, Date.now, undefined, { source: 'adsb.lol' });
+    await provider.fetchFlights(35, 140, 250);
+    expect(fetchFn).toHaveBeenCalledWith('https://api.adsb.lol/v2/lat/35.0000/lon/140.0000/dist/250', expect.any(Object));
+    expect(normalizeAirplanesLiveAircraft({ hex: 'abcdef', lat: 35, lon: 140, seen: 1, seen_pos: 180 })).toBeNull();
+    expect(normalizeAirplanesLiveAircraft({ hex: 'abcdef', lat: 95, lon: 140 })).toBeNull();
+    expect(normalizeAirplanesLiveAircraft({ hex: 'abcdef', lat: 35, lon: 140, seen: 1, seen_pos: 30 })?.lastSeenSeconds).toBe(30);
+  });
+  it('does not submit queued requests after a keyed connection is disposed', async () => {
+    let resolveFirst!: (response: Response) => void;
+    const fetchFn = vi.fn(() => new Promise<Response>((resolve) => { resolveFirst = resolve; }));
+    const provider = new AirplanesLiveProvider(fetchFn, Date.now, async () => undefined, { source: 'adsbexchange', apiKey: 'private-key' });
+    const first = provider.fetchFlights(35, 140, 150);
+    const second = provider.fetchFlights(36, 141, 150);
+    await Promise.resolve();
+    provider.dispose();
+    resolveFirst(Response.json({ ac: [], now: Date.now() }));
+    await first;
+    await expect(second).rejects.toThrow('connection closed');
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
   it('surfaces provider rate-limit metadata', async () => {
     const fetchFn = vi.fn(async () => new Response('', {
       status: 429,
