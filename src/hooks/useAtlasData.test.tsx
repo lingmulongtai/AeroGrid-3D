@@ -33,7 +33,7 @@ describe('useAtlasData', () => {
     }));
 
     await waitFor(() => expect(result.current.flightSnapshot.message).toBe('offline'));
-    expect(result.current.flightSnapshot).toMatchObject({ mode: 'live-beta', source: 'airplanes.live', items: [] });
+    expect(result.current.flightSnapshot).toMatchObject({ mode: 'live-beta', source: 'adsb.lol', items: [] });
   });
 
   it('loads a requested live coverage area', async () => {
