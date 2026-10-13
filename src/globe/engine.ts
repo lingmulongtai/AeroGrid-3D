@@ -24,7 +24,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { FlightRecord } from '../../shared/contracts';
-import type { CloudProfile } from '../../shared/live';
+import type { CloudProfile, PublicCamera, ShipRecord } from '../../shared/live';
 import { SATELLITE_COLORS, satelliteState, type SatelliteRecord } from '../data/satellites';
 import type { Airport } from '../data/airports';
 import type { QualitySettings } from '../types/quality';
@@ -38,10 +38,13 @@ import { AirportLayer } from './layers/airports';
 import { SatelliteLayer } from './layers/satellites';
 import { SpaceLayer } from './layers/space';
 import { WeatherLayer } from './layers/weather';
+import { PublicContacts } from './layers/publicContacts';
 import { LabelOverlay, projectVisible, type Highlight, type LabelRequest } from './overlay';
 import { ATMOSPHERE_FRAGMENT, ATMOSPHERE_VERTEX } from './shaders';
 
 export type PickResult =
+  | { kind: 'ship'; id: string }
+  | { kind: 'camera'; id: string }
   | { kind: 'aircraft'; id: string }
   | { kind: 'satellite'; id: string }
   | { kind: 'airport'; airport: Airport };
@@ -62,7 +65,7 @@ export interface EngineCallbacks {
 }
 
 export interface Selection {
-  kind: 'aircraft' | 'satellite' | 'airport';
+  kind: 'aircraft' | 'satellite' | 'airport' | 'ship' | 'camera';
   id: string;
 }
 
@@ -88,6 +91,7 @@ export class GlobeEngine {
   private space: SpaceLayer;
   private aircraft = new AircraftLayer();
   private satellites = new SatelliteLayer();
+  private publicContacts = new PublicContacts();
   private weather: WeatherLayer;
   private airports: AirportLayer;
   private overlay: LabelOverlay;
@@ -184,7 +188,7 @@ export class GlobeEngine {
     this.scene.add(this.space.group);
     this.airports = new AirportLayer(1);
     this.scene.add(this.airports.points);
-    this.scene.add(this.aircraft.group, this.satellites.group);
+    this.scene.add(this.aircraft.group, this.satellites.group, this.publicContacts.group);
     this.weather = new WeatherLayer(this.earth.uniforms.sunDirection as { value: Vector3 });
     this.scene.add(this.weather.group);
     this.scene.add(this.sunLight, this.sunLight.target, this.ambient);
@@ -270,15 +274,18 @@ export class GlobeEngine {
     this.airports.visible = layers.airports;
     this.airportLabels = layers.airports;
     this.showLabels = layers.labels;
+    this.publicContacts.setVisible(layers.ships, layers.cameras);
   }
 
   setFlights(flights: FlightRecord[], snapshotMs: number, colorMode: ColorMode) {
     this.aircraft.setFlights(flights, snapshotMs, colorMode);
   }
-
   setSatellites(records: SatelliteRecord[]) {
     this.satelliteRecords = records;
     this.satellites.setConstellation(records);
+  }
+  setPublicContacts(ships: ShipRecord[], cameras: PublicCamera[]) {
+    this.publicContacts.setShips(ships); this.publicContacts.setCameras(cameras);
   }
   setCloudProfiles(profiles: CloudProfile[], opacity: number) {
     this.weather.setOpacity(opacity); this.weather.useProfiles(profiles);
@@ -380,6 +387,12 @@ export class GlobeEngine {
     };
     if (this.aircraft.visible) consider(this.aircraft.pickPositions, this.aircraft.pickIds, 'aircraft', 0.85);
     if (this.satellites.visible) consider(this.satellites.pickPositions, this.satellites.pickIds, 'satellite', 1);
+    for (const candidate of this.publicContacts.getCandidates()) {
+      const screen = projectVisible(candidate.position, this.camera, this.width, this.height);
+      if (!screen) continue;
+      const distance = Math.hypot(screen.x - x, screen.y - y);
+      if (distance < radius && (!best || distance < best.score)) best = { result: { kind: candidate.kind, id: candidate.id }, score: distance };
+    }
     if (this.airports.visible) {
       const altitude = this.camera.position.length() - EARTH_RADIUS_KM;
       this.airports.airports.forEach((airport, index) => {
@@ -398,6 +411,10 @@ export class GlobeEngine {
   }
 
   private describe(result: PickResult): { title: string; subtitle: string } {
+    if (result.kind === 'ship' || result.kind === 'camera') {
+      const record = (result.kind === 'ship' ? this.publicContacts.shipRecords : this.publicContacts.cameraRecords).find((r) => r.id === result.id);
+      return { title: record?.name ?? result.id, subtitle: record?.source ?? '' };
+    }
     if (result.kind === 'aircraft') {
       const track = this.aircraft.getDisplay(result.id);
       const flight = this.flightLookup?.(result.id);
@@ -595,6 +612,7 @@ export class GlobeEngine {
   }
 
   private selectionPosition(selection: Selection): Vector3 | null {
+    if (selection.kind === 'ship' || selection.kind === 'camera') return this.publicContacts.getPosition(selection.kind, selection.id);
     if (selection.kind === 'aircraft') {
       const display = this.aircraft.getDisplay(selection.id);
       return display ? lonLatToVector(display.longitude, display.latitude, display.altitudeKm) : null;
@@ -641,6 +659,7 @@ export class GlobeEngine {
     this.earth.dispose();
     this.aircraft.dispose();
     this.satellites.dispose();
+    this.publicContacts.dispose();
     this.weather.dispose();
     this.airports.dispose();
     this.space.dispose();

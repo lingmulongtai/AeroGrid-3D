@@ -4,6 +4,7 @@ import type { MessageKey, Translator } from '../i18n';
 import { QUALITY_PRESETS, type QualityPreset, type QualitySettings } from '../types/quality';
 import type { EngineStats } from './Map';
 import { DataSettings } from './DataSettings';
+import { PublicStreamSettings } from './PublicStreamSettings';
 
 interface SettingsDialogProps {
   quality: QualitySettings;
@@ -95,6 +96,7 @@ export function SettingsDialog({ quality, onChange, onClose, readStats, t, onDat
         </section>
 
         <DataSettings onChange={onDataChange} t={t} />
+        <PublicStreamSettings onChange={onDataChange} t={t} />
         <section className="settings-stats" aria-live="polite">
           <Gauge aria-hidden="true" />
           {stats ? (

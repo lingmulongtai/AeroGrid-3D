@@ -581,3 +581,8 @@ button:focus-visible, input:focus-visible {
 .data-actions { display: flex; gap: 8px; margin: 12px 0; }
 .data-actions button { padding: 8px 12px; border: 1px solid #34465c; border-radius: 6px; }
 .data-settings a, .flight-panel-actions a { color: #7de9ff; text-decoration: underline; }
+
+.public-camera-image { display: block; width: 100%; max-height: 240px; object-fit: contain; }
+.public-camera-video { width: 100%; aspect-ratio: 16 / 9; border: 0; }
+.source-details { font-size: 10px; color: #a9bad0; line-height: 1.6; overflow-wrap: anywhere; }
+.source-details summary { cursor: pointer; color: #7de9ff; }

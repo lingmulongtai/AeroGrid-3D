@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { Airport } from '../data/airports';
 import { satelliteState, type SatelliteRecord } from '../data/satellites';
 import type { Locale, MessageKey, Translator } from '../i18n';
+import type { PublicCamera, ShipRecord } from '../../shared/live';
 
 function Metric({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return <div><dt>{label}</dt><dd>{value}</dd>{detail && <small>{detail}</small>}</div>;
@@ -28,6 +29,26 @@ function Shell({ label, icon, kicker, title, subtitle, onClose, children, t }: {
       {children}
     </motion.aside>
   );
+}
+
+export function ShipPanel({ ship, onClose, t }: { ship: ShipRecord; onClose: () => void; t: Translator }) {
+  return <Shell label={ship.name} icon={<MapPin />} kicker={t('data.ships')} title={ship.name} subtitle={ship.source} onClose={onClose} t={t}>
+    <dl className="flight-metrics">
+      <Metric label="MMSI" value={ship.id} />
+      <Metric label={t('flight.speed')} value={`${ship.speedKnots.toFixed(1)} kt`} />
+      <Metric label={t('flight.heading')} value={`${ship.heading.toFixed(0)}°`} />
+      <Metric label={t('airport.position')} value={`${ship.latitude.toFixed(4)}°, ${ship.longitude.toFixed(4)}°`} />
+      <Metric label={t('flight.lastSeen')} value={`${ship.receivedAt.replace('T', ' ')} UTC`} />
+    </dl>
+  </Shell>;
+}
+export function CameraPanel({ camera, onClose, t }: { camera: PublicCamera; onClose: () => void; t: Translator }) {
+  const [failed, setFailed] = useState(false);
+  return <Shell label={camera.name} icon={<MapPin />} kicker={t('data.cameras')} title={camera.name} subtitle={camera.source === 'youtube' ? t('data.youtube') : t('data.stills')} onClose={onClose} t={t}>
+    {camera.videoId ? <iframe className="public-camera-video" src={`https://www.youtube-nocookie.com/embed/${camera.videoId}`} title={camera.name} allow="encrypted-media; picture-in-picture" allowFullScreen />
+      : failed ? <p role="status">{t('data.imageFailed')}</p> : <img className="public-camera-image" src={`${camera.imageUrl}?t=${Math.floor(Date.now() / 600_000)}`} alt={camera.name} onError={() => setFailed(true)} />}
+    <div className="flight-panel-actions"><a href={camera.pageUrl} target="_blank" rel="noreferrer">{t('data.openSource')}</a></div>
+  </Shell>;
 }
 
 export function SatellitePanel({ satellite, tracked, locale, onClose, onToggleTrack, t }: {

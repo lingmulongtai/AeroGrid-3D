@@ -40,7 +40,8 @@ export interface PublicCamera {
   latitude: number;
   imageUrl: string;
   pageUrl: string;
-  source: 'fintraffic';
+  source: 'fintraffic' | 'youtube';
+  videoId?: string;
 }
 export type FlightSource = 'adsb.lol' | 'airplanes.live' | 'adsbexchange';
 export interface ConnectionPreferences {
