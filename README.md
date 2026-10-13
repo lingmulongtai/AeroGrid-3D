@@ -7,7 +7,7 @@ AeroGrid has two intentionally separate experiences:
 - **Global Demo** — a deterministic worldwide simulation for fluid exploration. It never calls a live aircraft endpoint.
 - **Live Beta** — real aircraft within an on-demand radius of 1–250 NM. If live data fails, AeroGrid shows a clear unavailable state instead of inserting demo aircraft.
 
-The public beta is designed for non-commercial, low-cost operation without an SLA. Accounts, alerts, history playback, infrastructure layers, and live satellites are outside v1.
+The public beta is designed for non-commercial, low-cost operation without an SLA. Accounts, alerts, history playback, and infrastructure layers remain outside v1. Optional live sources are configured in Display settings.
 
 ## Product behavior
 
@@ -22,17 +22,24 @@ The public beta is designed for non-commercial, low-cost operation without an SL
 - Collapsible sidebar, top-centred search for aircraft, satellites and airports, fullscreen toggle, English and Japanese UI.
 - Live source, coverage, update time, freshness, and failure state are always visible.
 - The last successful aircraft snapshot may be shown as `STALE` for at most five minutes. It is then removed.
-- Satellites are a deterministic, physically modelled orbital simulation and are never presented as live telemetry.
+- Demo satellites remain simulated; Live Beta uses CelesTrak OMM elements with SGP4 predictions and displays the element epoch. Neither is presented as live telemetry.
+- Aircraft and satellite trails have independent layer switches; station names respect the Labels switch.
+- Cloud volumes stay above the globe at their modelled altitude, including close tilted views. Live cloud heights come from GFS pressure-level forecasts; rainfall comes from RainViewer, with illustrative rain-column heights.
+- Optional regional ships and public still-image cameras use Fintraffic. Global receiver-dependent AISStream and paid ADS-B Exchange are selectable with personal API keys; public YouTube videos can be registered at map coordinates.
 
 ![AeroGrid desktop atlas](docs/screenshots/atlas-desktop.png)
 
 ## Architecture
 
-One Node service exposes the same-origin REST API and serves the Vite production bundle. There is no browser-to-provider access, WebSocket, SQLite, Redis, or Gemini configuration.
+One Node service exposes the same-origin REST API and serves the Vite production bundle. Keyed providers are accessed only from the server; AISStream uses a server WebSocket. Imagery, radar PNGs, official camera images and owner-enabled YouTube embeds remain browser resources.
 
 ```text
-Browser -> Node /api/v1 -> 60 s shared aircraft cache -> Airplanes.live
+Browser -> Node /api/v1 -> 60 s shared aircraft cache -> adsb.lol / selected provider
                     \-> 10 min weather cache --------> RainViewer
+                    \-> 30 min cloud profiles -------> Open-Meteo GFS
+                    \-> 2 h persistent OMM cache ----> CelesTrak
+                    \-> regional ships / cameras ---> Fintraffic
+                    \-> private expiring connection -> AISStream / RapidAPI
         -> Node static files -> Vite bundle
 ```
 
@@ -41,6 +48,11 @@ Public endpoints:
 - `GET /api/v1/status`
 - `GET /api/v1/flights?lat={-90..90}&lon={-180..180}&radius_nm={1..250}`
 - `GET /api/v1/weather`
+- `GET /api/v1/clouds?lat={-90..90}&lon={-180..180}&radius_nm={1..250}`
+- `GET /api/v1/satellites`
+- `GET /api/v1/ships?lat={-90..90}&lon={-180..180}&radius_nm={1..250}`
+- `GET /api/v1/cameras`
+- `POST /api/v1/connections` / `DELETE /api/v1/connections` — personal one-hour provider sessions; raw keys are never returned
 
 Shared types live in `shared/contracts.ts`, including `AppMode`, `SourceStatus`, and `DataSnapshot<T>`.
 
@@ -48,13 +60,18 @@ Shared types live in `shared/contracts.ts`, including `AppMode`, `SourceStatus`,
 
 | Data | Source | Runtime policy |
 | --- | --- | --- |
-| Live aircraft | [Airplanes.live API](https://airplanes.live/api-guide/) and [tiers](https://airplanes.live/api/) | Server-only, 250 NM maximum, 60-second cache, 1 upstream request/second, 450-request daily soft limit, stop upstream retries after HTTP 429 |
+| Live aircraft | [adsb.lol](https://www.adsb.lol/docs/open-data/api/) (ODbL) or selected provider | Server-only, 250 NM maximum, 60-second cache, 1 upstream request/second, 450-request daily soft limit, stop upstream retries after HTTP 429 |
+| Live orbit predictions | [CelesTrak OMM](https://celestrak.org/NORAD/documentation/gp-data-formats.php) | Persistent two-hour cache, stop automatic downloads on failure, no synthetic fallback |
+| Cloud profiles | [Open-Meteo GFS](https://open-meteo.com/en/docs/gfs-api) (CC BY 4.0) | Regional nine-point pressure-level forecasts, 30-minute cache, ground-level exclusion |
+| Ships / cameras | [Fintraffic](https://www.digitraffic.fi/en/terms-of-service/) (CC BY 4.0) | Finnish receiver coverage; recent vessel reports only, periodic still images |
 | Radar | [RainViewer API](https://www.rainviewer.com/api.html) | Server-only metadata, latest documented PNG frame, 10-minute cache, one metadata refresh after tile failure |
 | Demo | AeroGrid deterministic generator | Never presented as live data |
 | Imagery | [EOX Sentinel-2 cloudless](https://s2maps.eu/) (CC BY-NC-SA 4.0), [Esri World Imagery and Dark Gray Canvas](https://www.esri.com/), [NASA GIBS Black Marble](https://www.earthdata.nasa.gov/gibs) | Browser tile requests, viewport-prioritised, LRU cache |
 | Bundled data | NASA Blue Marble, Black Marble and LRO Moon textures; [HYG star catalogue](https://github.com/astronexus/HYG-Database) (CC BY-SA 4.0); [OurAirports](https://ourairports.com/data/) (public domain) | Served from `public/` |
 
-[OpenSky](https://opensky-network.org/about/terms-of-use) is not enabled in the public product. Live satellite data is also disabled until it can use a persistent cache and comply with the [CelesTrak usage policy](https://www.celestrak.org/usage-policy.php).
+[OpenSky](https://opensky-network.org/about/terms-of-use) is not enabled. Production satellite downloads require `ORBIT_CACHE_PATH` on persistent storage; container-local temporary storage is insufficient. Any orbital download failure latches a pause for operator investigation under the [CelesTrak usage policy](https://celestrak.org/usage-policy.php).
+
+See [the source research and key setup guide](docs/DATA_SOURCES.md) for coverage, licensing, free versus paid options, and the distinction between forecasts, orbital predictions and observations. AISStream and paid ADS-B Exchange have not been validated with a user's subscribed key.
 
 Provider availability and terms can change. Review the linked terms before every public release. Attribution is displayed in the application.
 
