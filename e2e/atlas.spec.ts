@@ -91,6 +91,30 @@ test('cloud shader renders close tilted volumes without compilation errors', asy
   await expectHealthyPage(page);
 });
 
+test('night-side geographic outlines render and fade before close imagery', async ({ page }, testInfo) => {
+  const errors: string[] = [];
+  page.on('console', (message) => { if (message.type() === 'error' && /Shader|WebGLProgram/.test(message.text())) errors.push(message.text()); });
+  await enterDemo(page);
+  await expect.poll(() => page.evaluate(() => (window as any).__globe.earth.outlines.group.children.length)).toBe(2);
+  await page.evaluate(() => {
+    const globe = (window as any).__globe;
+    const lat = 40 * Math.PI / 180, lon = 15 * Math.PI / 180;
+    globe.controls.rig.target.set(Math.cos(lat) * Math.sin(lon), Math.sin(lat), Math.cos(lat) * Math.cos(lon));
+    globe.controls.rig.range = 12_000; globe.controls.rig.tilt = 0; globe.controls.applyRig();
+    globe.earth.setSunDirection(globe.controls.rig.target.clone().negate());
+    globe.lastCelestial = Date.now() + 600_000;
+    globe.weather.visible = false; globe.aircraft.visible = false; globe.satellites.visible = false;
+  });
+  await page.locator('.globe-canvas').screenshot({ path: testInfo.outputPath('night-outlines.png') });
+  expect(errors).toEqual([]);
+  await page.evaluate(() => {
+    const globe = (window as any).__globe;
+    globe.controls.rig.range = 50; globe.controls.applyRig();
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).__globe.earth.outlines.distanceFade.value)).toBe(0);
+  await expectHealthyPage(page);
+});
+
 test('live ships and public cameras can be picked on the globe', async ({ page, isMobile }) => {
   const now = new Date().toISOString();
   const snapshot = (source: string, items: unknown[]) => ({ mode: 'live-beta', source, status: 'available', generatedAt: now, expiresAt: new Date(Date.now() + 60_000).toISOString(), coverage: { kind: 'region', name: 'Finland' }, items });
