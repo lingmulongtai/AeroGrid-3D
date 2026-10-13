@@ -27,6 +27,7 @@ import type { FlightRecord } from '../../shared/contracts';
 import { buildConstellation, SATELLITE_COLORS, satelliteState, type SatelliteRecord } from '../data/satellites';
 import type { Airport } from '../data/airports';
 import type { QualitySettings } from '../types/quality';
+import type { LayerVisibility } from '../types/layers';
 import { computeCelestialState, siderealAngle, type CelestialState } from './astro';
 import { GlobeControls, type CameraSnapshot, type FollowTarget } from './controls';
 import { Earth, type MapStyle } from './earth';
@@ -211,7 +212,6 @@ export class GlobeEngine {
     this.atmosphereMaterial.uniforms.primarySteps.value = quality.atmosphereSteps;
     this.atmosphereMaterial.uniforms.lightSteps.value = Math.max(4, Math.round(quality.atmosphereSteps / 2.5));
     this.weather.setBudget(quality.weatherParticles);
-    this.satellites.showTrails = quality.satelliteTrails;
     if (initial || previous.maxSatellites !== quality.maxSatellites) {
       this.satelliteRecords = buildConstellation(quality.maxSatellites);
       this.satellites.setConstellation(this.satelliteRecords);
@@ -264,10 +264,11 @@ export class GlobeEngine {
     this.earth.setRealisticLighting(enabled);
   }
 
-  setLayers(layers: { flights: boolean; satellites: boolean; weather: boolean; airports: boolean; flightTrails: boolean; labels: boolean }) {
+  setLayers(layers: LayerVisibility) {
     this.aircraft.visible = layers.flights;
     this.aircraft.showTrails = layers.flightTrails;
     this.satellites.visible = layers.satellites;
+    this.satellites.showTrails = layers.satelliteTrails;
     this.weather.visible = layers.weather;
     this.airports.visible = layers.airports;
     this.airportLabels = layers.airports;
@@ -492,7 +493,7 @@ export class GlobeEngine {
       });
     }
 
-    if (this.satellites.visible) {
+    if (this.showLabels && this.satellites.visible) {
       const ids = this.satellites.pickIds;
       const positions = this.satellites.pickPositions;
       const point = new Vector3();
@@ -500,7 +501,7 @@ export class GlobeEngine {
         const record = this.satelliteRecords[i];
         if (!record) continue;
         const isStation = record.category === 'station';
-        if (!isStation && (!this.showLabels || record.category === 'starlink')) continue;
+        if (record.category === 'starlink') continue;
         point.set(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
         const screen = projectVisible(point, camera, this.width, this.height);
         if (!screen) continue;

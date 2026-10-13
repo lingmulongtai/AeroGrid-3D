@@ -4,6 +4,7 @@ export type LayerKey =
   | 'satellites'
   | 'weather'
   | 'flightTrails'
+  | 'satelliteTrails'
   | 'labels';
 
 export type LayerVisibility = Record<LayerKey, boolean>;
@@ -14,5 +15,6 @@ export const DEFAULT_LAYERS: LayerVisibility = {
   satellites: true,
   weather: true,
   flightTrails: false,
+  satelliteTrails: true,
   labels: false,
 };
