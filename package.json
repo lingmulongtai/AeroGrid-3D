@@ -26,6 +26,7 @@
     "start": "node server-dist/server/index.js"
   },
   "dependencies": {
+    "@google-cloud/storage": "^8.4.0",
     "express": "^4.21.2",
     "satellite.js": "^6.0.2",
     "ws": "^8.22.0"
