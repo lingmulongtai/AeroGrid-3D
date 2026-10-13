@@ -10,7 +10,8 @@ import { SettingsDialog } from './components/SettingsDialog';
 import { Sidebar } from './components/Sidebar';
 import { WelcomeDialog } from './components/WelcomeDialog';
 import { loadRegionalAirports, MAJOR_AIRPORTS, type Airport } from './data/airports';
-import { buildConstellation } from './data/satellites';
+import { buildConstellation, constellationFromElements } from './data/satellites';
+import { usePublicLayers } from './hooks/usePublicLayers';
 import type { GlobeEngine } from './globe/engine';
 import { useAtlasData } from './hooks/useAtlasData';
 import { demoRouteFor } from './hooks/useFlightData';
@@ -87,7 +88,8 @@ export function App() {
     refreshToken,
   });
 
-  const satellites = useMemo(() => buildConstellation(quality.maxSatellites), [quality.maxSatellites]);
+  const publicLayers = usePublicLayers(mode, coverage, layers, refreshToken);
+  const satellites = useMemo(() => mode === 'live-beta' ? constellationFromElements(publicLayers.orbits.items, quality.maxSatellites) : buildConstellation(quality.maxSatellites), [mode, publicLayers.orbits.items, quality.maxSatellites]);
   const selectedFlight = useMemo(
     () => selection?.kind === 'aircraft' ? flightSnapshot.items.find((flight) => flight.id === selection.id) ?? null : null,
     [flightSnapshot.items, selection],
@@ -205,6 +207,8 @@ export function App() {
         onTrackingInterrupted={stopTracking}
         onOpenSettings={() => setSettingsOpen(true)}
         onEngineReady={handleEngineReady}
+        satellites={satellites}
+        cloudProfiles={publicLayers.clouds.items}
         t={t}
       />
 
@@ -270,8 +274,8 @@ export function App() {
         <footer className="atlas-footer">
           <span>{mode === 'demo'
             ? t('status.demoSource')
-            : `${t('status.liveSource')} · ${t('status.coverage', { value: coverage.radiusNm })}${flightSnapshot.status === 'available' ? '' : ` · ${t(`status.reason.${flightSnapshot.status}` as 'status.reason.stale' | 'status.reason.rate-limited' | 'status.reason.unavailable')}`}`}</span>
-          <span>{weatherLabel}</span>
+            : `${flightSnapshot.source} · ${t('status.coverage', { value: coverage.radiusNm })}${flightSnapshot.status === 'available' ? '' : ` · ${t(`status.reason.${flightSnapshot.status}` as 'status.reason.stale' | 'status.reason.rate-limited' | 'status.reason.unavailable')}`}`}</span>
+          <span>{mode === 'demo' ? weatherLabel : `${t('data.forecast')} · ${publicLayers.clouds.items[0]?.validTime ?? publicLayers.clouds.status}`}</span>
           <span>{t('footer.attribution')}</span>
         </footer>
       )}
