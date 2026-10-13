@@ -1,4 +1,6 @@
 import { siderealAngle } from '../globe/astro';
+import { eciToGeodetic, gstime, json2satrec, propagate, type SatRec } from 'satellite.js';
+import type { OrbitalElements } from '../../shared/live';
 
 // A deterministic, physically plausible demo constellation. Orbits are
 // circular Keplerian orbits propagated in an inertial frame and rotated by
@@ -25,6 +27,7 @@ export interface SatelliteRecord {
   raan: number;
   phase: number;
   periodMinutes: number;
+  elements?: OrbitalElements;
 }
 
 export interface SatelliteState {
@@ -115,6 +118,37 @@ const SCALABLE: SatelliteRecord[][] = [
 const SCALABLE_TOTAL = SCALABLE.reduce((sum, group) => sum + group.length, 0);
 
 const cache = new Map<number, SatelliteRecord[]>();
+const propagatedRecords = new WeakMap<SatelliteRecord, SatRec>();
+
+export function constellationFromElements(elements: OrbitalElements[], maxCount: number, timeMs = Date.now()): SatelliteRecord[] {
+  const ordered = [...elements].sort((a, b) => {
+    const priority = (e: OrbitalElements) => e.NORAD_CAT_ID === 25544 || e.NORAD_CAT_ID === 48274 ? 0 : /STARLINK/i.test(e.OBJECT_NAME) ? 2 : 1;
+    return priority(a) - priority(b) || a.NORAD_CAT_ID - b.NORAD_CAT_ID;
+  });
+  const valid: SatelliteRecord[] = [];
+  for (const e of ordered) {
+    if (valid.length >= maxCount) break;
+    const epoch = Date.parse(`${e.EPOCH.replace(/Z$/, '')}Z`);
+    if (timeMs - epoch > 14 * 24 * 60 * 60_000 || epoch > timeMs + 24 * 60 * 60_000) continue;
+    const station = e.NORAD_CAT_ID === 25544 || e.NORAD_CAT_ID === 48274;
+    const category: SatelliteCategory = station ? 'station' : /STARLINK/i.test(e.OBJECT_NAME) ? 'starlink' : /ONEWEB|IRIDIUM/i.test(e.OBJECT_NAME) ? 'broadband' : /GPS|GALILEO|GLONASS|BEIDOU/i.test(e.OBJECT_NAME) ? 'navigation' : e.MEAN_MOTION < 1.1 ? 'geostationary' : 'earth-observation';
+    const periodMinutes = 1440 / e.MEAN_MOTION;
+    const altitudeKm = Math.cbrt(MU * (periodMinutes * 60 / (2 * Math.PI)) ** 2) - EARTH_RADIUS_KM;
+    const satellite: SatelliteRecord = { id: `norad-${e.NORAD_CAT_ID}`, name: e.OBJECT_NAME, category, model: station ? 'station' : category === 'starlink' ? 'starlink' : 'satellite', altitudeKm, inclination: e.INCLINATION, raan: e.RA_OF_ASC_NODE, phase: e.MEAN_ANOMALY, periodMinutes, elements: e };
+    const satrec = json2satrec(e);
+    if (!propagate(satrec, new Date(timeMs))) continue;
+    propagatedRecords.set(satellite, satrec);
+    valid.push(satellite);
+  }
+  return valid;
+}
+
+function propagatedState(satellite: SatelliteRecord, timeMs: number) {
+  if (!satellite.elements) return null;
+  let satrec = propagatedRecords.get(satellite);
+  if (!satrec) { satrec = json2satrec(satellite.elements); propagatedRecords.set(satellite, satrec); }
+  return propagate(satrec, new Date(timeMs));
+}
 
 /** Deterministic constellation limited to maxCount, thinning mega-constellations evenly. */
 export function buildConstellation(maxCount: number): SatelliteRecord[] {
@@ -143,6 +177,12 @@ export function buildConstellation(maxCount: number): SatelliteRecord[] {
 
 /** Inertial (equatorial) position in km. */
 export function satelliteInertialPosition(satellite: SatelliteRecord, timeMs: number, out: { x: number; y: number; z: number }) {
+  if (satellite.elements) {
+    const state = propagatedState(satellite, timeMs);
+    if (!state) { out.x = out.y = out.z = NaN; return out; }
+    Object.assign(out, state.position);
+    return out;
+  }
   const radius = EARTH_RADIUS_KM + satellite.altitudeKm;
   const minutes = (timeMs - EPOCH_MS) / 60_000;
   const u = (satellite.phase + (360 * minutes) / satellite.periodMinutes) * DEG;
@@ -161,6 +201,17 @@ export function satelliteInertialPosition(satellite: SatelliteRecord, timeMs: nu
 
 /** Earth-fixed world position (x = 90°E, y = north, z = 0°E) in km. */
 export function satelliteWorldPosition(satellite: SatelliteRecord, timeMs: number, sidereal: number, out: { x: number; y: number; z: number }) {
+  if (satellite.elements) {
+    const state = propagatedState(satellite, timeMs);
+    if (!state) { out.x = out.y = out.z = NaN; return out; }
+    // Render WGS84 geodetic altitude on the application's spherical globe.
+    const gd = eciToGeodetic(state.position, gstime(new Date(timeMs)));
+    const radius = EARTH_RADIUS_KM + gd.height;
+    out.x = radius * Math.cos(gd.latitude) * Math.sin(gd.longitude);
+    out.y = radius * Math.sin(gd.latitude);
+    out.z = radius * Math.cos(gd.latitude) * Math.cos(gd.longitude);
+    return out;
+  }
   const p = satelliteInertialPosition(satellite, timeMs, out);
   const cos = Math.cos(sidereal);
   const sin = Math.sin(sidereal);
@@ -180,7 +231,7 @@ export function satelliteState(satellite: SatelliteRecord, timeMs: number): Sate
     longitude: Math.atan2(p.x, p.z) / DEG,
     latitude: Math.asin(p.y / radius) / DEG,
     altitudeKm: radius - EARTH_RADIUS_KM,
-    speedKmS: (2 * Math.PI * radius) / (satellite.periodMinutes * 60),
+    speedKmS: satellite.elements ? (() => { const v = propagatedState(satellite, timeMs)?.velocity; return v ? Math.hypot(v.x, v.y, v.z) : NaN; })() : (2 * Math.PI * radius) / (satellite.periodMinutes * 60),
   };
 }
 
