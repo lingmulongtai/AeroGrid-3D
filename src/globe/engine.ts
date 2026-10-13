@@ -452,7 +452,7 @@ export class GlobeEngine {
     const sidereal = siderealAngle(new Date(now));
     this.aircraft.update(now, camera, this.origin, cssPixelsPerRadian);
     this.satellites.update(now, sidereal, camera, this.origin, cssPixelsPerRadian);
-    this.weather.update(performance.now() / 1000, devicePixelsPerRadian, camera.position);
+    this.weather.update(performance.now() / 1000, devicePixelsPerRadian, camera, this.renderer.getDrawingBufferSize(new Vector2()));
     this.airports.update(camera.position);
 
     const up = camera.position.clone().normalize();
