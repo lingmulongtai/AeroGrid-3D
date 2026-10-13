@@ -26,7 +26,9 @@
     "start": "node server-dist/server/index.js"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "satellite.js": "^6.0.2",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
@@ -40,6 +42,7 @@
     "@types/react-dom": "^19.3.0",
     "@types/supertest": "^7.2.1",
     "@types/three": "^0.186.0",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^5.0.4",
     "@vitest/coverage-v8": "^4.1.10",
     "astronomy-engine": "^2.1.19",
