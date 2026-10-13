@@ -20,10 +20,12 @@ import {
 } from 'three';
 import { DEG, EARTH_RADIUS_KM, enuFrame, lonLatToVector, wrapLongitude } from '../geo';
 import { cloudHalfHeight } from './cloudVolume';
+import type { CloudProfile } from '../../../shared/live';
 
 interface CloudParticle {
   position: Vector3;
   size: number;
+  halfHeight?: number;
   opacity: number;
   shade: number;
   swirlAxis: Vector3;
@@ -453,8 +455,10 @@ export class WeatherLayer {
   private rain: LineSegments;
   private cloudMaterial: ShaderMaterial;
   private rainMaterial: ShaderMaterial;
-  private source: 'demo' | 'radar' | 'off' = 'off';
+  private source: 'demo' | 'radar' | 'profiles' | 'off' = 'off';
+  private profiles: CloudProfile[] = [];
   private radarKey = '';
+  private rainRadarKey = '';
   private abort: AbortController | null = null;
   private budget = 12_000;
   readonly uniforms: Record<string, IUniform>;
@@ -509,6 +513,7 @@ export class WeatherLayer {
     this.source = 'off';
     this.radarKey = '';
     if (source === 'demo') this.useDemo();
+    else if (source === 'profiles') this.useProfiles(this.profiles);
   }
 
   setNightStyle(enabled: boolean) {
@@ -544,14 +549,57 @@ export class WeatherLayer {
       });
   }
 
+  useProfiles(profiles: CloudProfile[]) {
+    if (this.source === 'profiles' && this.profiles === profiles) return;
+    if (this.source !== 'profiles') this.abort?.abort();
+    this.source = 'profiles'; this.profiles = profiles;
+    const random = mulberry32(20261013);
+    const particles: CloudParticle[] = [];
+    const active = profiles.flatMap((profile) => profile.levels.filter((level) => level.coverPercent >= 10).map((level) => ({ profile, level })));
+    const perLevel = Math.max(1, Math.floor(this.budget / Math.max(1, active.length)));
+    for (const { profile, level } of active) {
+      const count = Math.floor(perLevel * level.coverPercent / 100);
+      for (let i = 0; i < count; i++) {
+        const [lon, lat] = offsetLonLat(profile.longitude, profile.latitude, (random() - 0.5) * profile.footprintKm, (random() - 0.5) * profile.footprintKm);
+        // Pressure-level altitude is modelled AMSL; radar intensity never sets height.
+        const altitude = level.altitudeKm;
+        const size = Math.max(3, profile.footprintKm / 12);
+        particles.push({ position: lonLatToVector(lon, lat, altitude), size, halfHeight: Math.max(0.01, Math.min(cloudHalfHeight(altitude, size), altitude - profile.groundAltitudeKm - 0.05)), opacity: 0.25 + level.coverPercent / 250, shade: level.pressureHpa >= 850 ? 0.3 : 0.1, swirlAxis: new Vector3(0, 1, 0), swirlRate: 0, lightning: 0, seed: random() * 10 });
+      }
+    }
+    this.apply(particles, false);
+  }
+
+  useRadarRain(urlTemplate: string | null, center: { latitude: number; longitude: number }, radiusKm: number, onError: () => void) {
+    if (!urlTemplate) { this.rainRadarKey = ''; this.abort?.abort(); this.applyRain([]); return; }
+    const key = `${urlTemplate}|${center.latitude.toFixed(2)}|${center.longitude.toFixed(2)}|${radiusKm}`;
+    if (key === this.rainRadarKey) return;
+    this.abort?.abort(); this.rainRadarKey = key;
+    const controller = new AbortController(); this.abort = controller;
+    void sampleRadar(urlTemplate, center, radiusKm, Math.min(2000, this.budget), controller.signal).then((particles) => {
+      if (controller.signal.aborted) return;
+      // Radar observes precipitation only. Column tops are an illustration using
+      // the nearest forecast cloud level (or 2.5 km when no forecast is available).
+      for (const particle of particles) {
+        const longitude = Math.atan2(particle.position.x, particle.position.z) / DEG;
+        const latitude = Math.asin(particle.position.y / particle.position.length()) / DEG;
+        const profile = [...this.profiles].sort((a, b) => Math.hypot(a.longitude - longitude, a.latitude - latitude) - Math.hypot(b.longitude - longitude, b.latitude - latitude))[0];
+        const altitude = profile?.levels.find((level) => level.coverPercent >= 10)?.altitudeKm ?? 2.5;
+        particle.position.copy(lonLatToVector(longitude, latitude, altitude));
+      }
+      this.applyRain(particles);
+    }).catch((error) => { if (!controller.signal.aborted) { this.applyRain([]); onError(); } });
+  }
+
   clear() {
     this.abort?.abort();
     this.source = 'off';
     this.radarKey = '';
+    this.rainRadarKey = '';
     this.apply([]);
   }
 
-  private apply(particles: CloudParticle[]) {
+  private apply(particles: CloudParticle[], includeRain = true) {
     const count = particles.length;
     const positions = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
@@ -567,7 +615,7 @@ export class WeatherLayer {
       shades[i] = p.shade;
       swirls.set([p.swirlAxis.x, p.swirlAxis.y, p.swirlAxis.z, p.swirlRate], i * 4);
       seeds[i] = p.seed;
-      thicknesses[i] = cloudHalfHeight(p.position.length() - EARTH_RADIUS_KM, p.size);
+      thicknesses[i] = p.halfHeight ?? cloudHalfHeight(p.position.length() - EARTH_RADIUS_KM, p.size);
     });
     const quad = new PlaneGeometry(2, 2);
     const geometry = new InstancedBufferGeometry();
@@ -583,7 +631,10 @@ export class WeatherLayer {
     geometry.instanceCount = count;
     this.clouds.geometry.dispose();
     this.clouds.geometry = geometry;
+    if (includeRain || particles.length === 0) this.applyRain(particles);
+  }
 
+  private applyRain(particles: CloudParticle[]) {
     const random = mulberry32(99);
     const rainSources = particles.filter((p) => p.shade > 0.45 && p.swirlRate === 0);
     const streaksPer = 7;

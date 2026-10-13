@@ -47,7 +47,7 @@ export function SatellitePanel({ satellite, tracked, locale, onClose, onToggleTr
       icon={<Satellite />}
       kicker={t(`satellite.category.${satellite.category}` as MessageKey)}
       title={satellite.name}
-      subtitle={t('satellite.simulated')}
+      subtitle={satellite.elements ? t('satellite.prediction', { value: `${satellite.elements.EPOCH.replace('T', ' ')} UTC` }) : t('satellite.simulated')}
       onClose={onClose}
       t={t}
     >

@@ -24,7 +24,8 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { FlightRecord } from '../../shared/contracts';
-import { buildConstellation, SATELLITE_COLORS, satelliteState, type SatelliteRecord } from '../data/satellites';
+import type { CloudProfile } from '../../shared/live';
+import { SATELLITE_COLORS, satelliteState, type SatelliteRecord } from '../data/satellites';
 import type { Airport } from '../data/airports';
 import type { QualitySettings } from '../types/quality';
 import type { LayerVisibility } from '../types/layers';
@@ -212,10 +213,6 @@ export class GlobeEngine {
     this.atmosphereMaterial.uniforms.primarySteps.value = quality.atmosphereSteps;
     this.atmosphereMaterial.uniforms.lightSteps.value = Math.max(4, Math.round(quality.atmosphereSteps / 2.5));
     this.weather.setBudget(quality.weatherParticles);
-    if (initial || previous.maxSatellites !== quality.maxSatellites) {
-      this.satelliteRecords = buildConstellation(quality.maxSatellites);
-      this.satellites.setConstellation(this.satelliteRecords);
-    }
     if (initial || previous.msaa !== quality.msaa || previous.maxPixelRatio !== quality.maxPixelRatio) {
       this.buildComposer();
       this.resize();
@@ -277,6 +274,17 @@ export class GlobeEngine {
 
   setFlights(flights: FlightRecord[], snapshotMs: number, colorMode: ColorMode) {
     this.aircraft.setFlights(flights, snapshotMs, colorMode);
+  }
+
+  setSatellites(records: SatelliteRecord[]) {
+    this.satelliteRecords = records;
+    this.satellites.setConstellation(records);
+  }
+  setCloudProfiles(profiles: CloudProfile[], opacity: number) {
+    this.weather.setOpacity(opacity); this.weather.useProfiles(profiles);
+  }
+  setRadarPrecipitation(url: string | null, center: { latitude: number; longitude: number }, radiusKm: number, onError: () => void) {
+    this.weather.useRadarRain(url, center, radiusKm, onError);
   }
 
   setColorMode(colorMode: ColorMode) {

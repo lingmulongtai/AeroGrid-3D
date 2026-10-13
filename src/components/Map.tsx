@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AppMode, FlightRecord } from '../../shared/contracts';
+import type { CloudProfile } from '../../shared/live';
+import type { SatelliteRecord } from '../data/satellites';
 import type { Translator } from '../i18n';
 import type { LayerVisibility } from '../types/layers';
 import type { QualitySettings } from '../types/quality';
@@ -42,6 +44,8 @@ interface MapProps {
   onOpenSettings: () => void;
   onEngineReady?: (engine: GlobeEngine | null) => void;
   t: Translator;
+  satellites: SatelliteRecord[];
+  cloudProfiles: CloudProfile[];
 }
 
 const E2E_OFFLINE_GLOBE = import.meta.env.VITE_E2E === 'true';
@@ -61,6 +65,7 @@ export function EarthMap({
   mode, layers, colorMode, mapStyle, flights, snapshotTime, radarTileUrl, radarCenter, radarRadiusKm,
   weatherOpacity, selection, tracked, quality, onPick, onViewStateChange, onWeatherTileError,
   onTrackingInterrupted, onOpenSettings, onEngineReady, t,
+  satellites, cloudProfiles,
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [engine, setEngine] = useState<GlobeEngine | null>(null);
@@ -109,6 +114,7 @@ export function EarthMap({
   useEffect(() => { engine?.setLayers(layers); }, [engine, layers]);
   useEffect(() => { engine?.setColorMode(colorMode); }, [engine, colorMode]);
   useEffect(() => { engine?.setSelection(selection); }, [engine, selection]);
+  useEffect(() => { engine?.setSatellites(satellites); }, [engine, satellites]);
 
   const colorModeRef = useRef(colorMode);
   colorModeRef.current = colorMode;
@@ -122,10 +128,11 @@ export function EarthMap({
     if (!engine) return;
     if (!layers.weather) engine.setWeather({ mode: 'off' }, weatherOpacity);
     else if (mode === 'demo') engine.setWeather({ mode: 'demo' }, weatherOpacity);
-    else if (radarTileUrl && !E2E_OFFLINE_GLOBE) {
-      engine.setWeather({ mode: 'radar', url: radarTileUrl, center: radarCenter, radiusKm: radarRadiusKm, onError: onWeatherTileError }, weatherOpacity);
-    } else engine.setWeather({ mode: 'off' }, weatherOpacity);
-  }, [engine, layers.weather, mode, radarTileUrl, radarCenter, radarRadiusKm, weatherOpacity, onWeatherTileError]);
+    else {
+      engine.setCloudProfiles(cloudProfiles, weatherOpacity);
+      engine.setRadarPrecipitation(E2E_OFFLINE_GLOBE ? null : radarTileUrl, radarCenter, radarRadiusKm, onWeatherTileError);
+    }
+  }, [engine, layers.weather, mode, cloudProfiles, weatherOpacity, radarTileUrl, radarCenter, radarRadiusKm, onWeatherTileError]);
 
   const trackedRef = useRef(tracked);
   trackedRef.current = tracked;
