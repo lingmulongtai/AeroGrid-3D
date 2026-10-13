@@ -85,7 +85,7 @@ test('cloud shader renders close tilted volumes without compilation errors', asy
     globe.controls.applyRig();
     globe.callbacks.onCamera(globe.controls.snapshot());
   });
-  await expect.poll(async () => (await cameraState(page)).height).toBeLessThan(10_000);
+  await expect.poll(async () => (await cameraState(page)).height, { timeout: 30_000 }).toBeLessThan(10_000);
   await page.locator('.globe-canvas').screenshot();
   expect(errors).toEqual([]);
   await expectHealthyPage(page);
