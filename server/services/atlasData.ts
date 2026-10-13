@@ -36,6 +36,7 @@ interface AtlasDataDependencies {
   quota?: DailyQuota;
   now?: () => number;
   revision?: string;
+  flightSource?: string;
 }
 
 function initialHealth(source: string): SourceHealth {
@@ -66,7 +67,8 @@ function nextUtcDay(nowMs: number): number {
 }
 
 export function createAtlasDataService(dependencies: AtlasDataDependencies = {}): AtlasDataService {
-  const flightProvider = dependencies.flightProvider ?? new AirplanesLiveProvider();
+  const flightProvider = dependencies.flightProvider ?? new AirplanesLiveProvider(fetch, Date.now, undefined, { source: 'adsb.lol' });
+  const flightSource = dependencies.flightSource ?? (dependencies.flightProvider ? 'airplanes.live' : 'adsb.lol');
   const weatherProvider = dependencies.weatherProvider ?? new RainViewerProvider();
   const quota = dependencies.quota ?? new DailyQuota(DAILY_FLIGHT_REQUEST_LIMIT);
   const now = dependencies.now ?? Date.now;
@@ -75,7 +77,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
   const weatherCache = new ExpiringCache<DataSnapshot<WeatherFrame>>();
   const inFlightRequests = new Map<string, Promise<DataSnapshot<FlightRecord>>>();
 
-  let flightHealth = initialHealth('airplanes.live');
+  let flightHealth = initialHealth(flightSource);
   let weatherHealth = initialHealth('rainviewer');
   let flightProviderBlockedUntil = 0;
 
@@ -108,7 +110,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
       const message = 'Daily Live Beta request budget is exhausted';
       flightHealth = {
         status: 'rate-limited',
-        source: 'airplanes.live',
+        source: flightSource,
         updatedAt: flightHealth.updatedAt,
         message,
         requestCount: quotaState.count,
@@ -122,7 +124,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
       const generatedAt = new Date(result.generatedAtMs).toISOString();
       const snapshot: DataSnapshot<FlightRecord> = {
         mode: 'live-beta',
-        source: 'airplanes.live',
+        source: flightSource,
         status: 'available',
         generatedAt,
         expiresAt: new Date(nowMs + FLIGHT_CACHE_TTL_MS).toISOString(),
@@ -137,7 +139,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
       const quotaState = quota.getState(nowMs);
       flightHealth = {
         status: 'available',
-        source: 'airplanes.live',
+        source: flightSource,
         updatedAt: generatedAt,
         requestCount: quotaState.count,
         requestLimit: quotaState.limit,
@@ -154,7 +156,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
       }
       flightHealth = {
         status: sourceStatus,
-        source: 'airplanes.live',
+        source: flightSource,
         updatedAt: flightHealth.updatedAt,
         message,
         requestCount: quota.getState(nowMs).count,
@@ -178,7 +180,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
     }
     return {
       mode: 'live-beta',
-      source: 'airplanes.live',
+      source: flightSource,
       status: failureStatus,
       generatedAt: new Date(nowMs).toISOString(),
       expiresAt: new Date(nowMs).toISOString(),
