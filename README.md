@@ -69,7 +69,7 @@ Shared types live in `shared/contracts.ts`, including `AppMode`, `SourceStatus`,
 | Imagery | [EOX Sentinel-2 cloudless](https://s2maps.eu/) (CC BY-NC-SA 4.0), [Esri World Imagery and Dark Gray Canvas](https://www.esri.com/), [NASA GIBS Black Marble](https://www.earthdata.nasa.gov/gibs) | Browser tile requests, viewport-prioritised, LRU cache |
 | Bundled data | NASA Blue Marble, Black Marble and LRO Moon textures; [HYG star catalogue](https://github.com/astronexus/HYG-Database) (CC BY-SA 4.0); [OurAirports](https://ourairports.com/data/) (public domain) | Served from `public/` |
 
-[OpenSky](https://opensky-network.org/about/terms-of-use) is not enabled. Production satellite downloads require `ORBIT_CACHE_PATH` on persistent storage; container-local temporary storage is insufficient. Any orbital download failure latches a pause for operator investigation under the [CelesTrak usage policy](https://celestrak.org/usage-policy.php).
+[OpenSky](https://opensky-network.org/about/terms-of-use) is not enabled. Production satellite downloads require `ORBIT_CACHE_PATH` on persistent storage or a `gs://bucket/object` Cloud Storage location; container-local temporary storage is insufficient. Shared Cloud Storage generation preconditions coordinate refreshes across regions and revisions. Any orbital download failure latches a pause for operator investigation under the [CelesTrak usage policy](https://celestrak.org/usage-policy.php).
 
 See [the source research and key setup guide](docs/DATA_SOURCES.md) for coverage, licensing, free versus paid options, and the distinction between forecasts, orbital predictions and observations. AISStream and paid ADS-B Exchange have not been validated with a user's subscribed key.
 
@@ -117,7 +117,12 @@ The multi-stage `Dockerfile` runs as the unprivileged `node` user and health-che
 1. Create the Artifact Registry repository (default substitution: `aerogrid`).
 2. Confirm Cloud Build can push images and deploy Cloud Run.
 3. Override `_REPOSITORY` or `_SERVICE` if needed.
-4. Review provider terms, daily request metrics, structured JSON logs, and the degraded source state after deployment.
+4. Create the private `$PROJECT_ID-orbit-cache` Cloud Storage bucket with uniform bucket access and public access prevention. The existing runtime service identity needs object read/write access to this bucket; never download service-account keys into the repo. The deployment sets `ORBIT_CACHE_PATH=gs://$PROJECT_ID-orbit-cache/orbits.json`.
+5. Review provider terms, daily request metrics, structured JSON logs, and the degraded source state after deployment.
+
+The existing `us-west1` deployment uses a separate Cloud Build trigger. Its ingress container also needs the same `ORBIT_CACHE_PATH`, session affinity and one maximum instance. Updating only this YAML does not change that trigger's configuration. Deployment verification and the active revisions are recorded in [PR #22](https://github.com/lingmulongtai/AeroGrid-3D/pull/22).
+
+Satellite and NASA Night views include bundled Natural Earth coastlines and country boundaries. Lines become clearer on the unlit side, remain faint in daylight, and fade below 400 km camera altitude before city imagery. Source/version/license are in `public/data/earth-boundaries.LICENSE.md`.
 
 ## License
 
