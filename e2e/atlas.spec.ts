@@ -15,6 +15,7 @@ async function enterDemo(page: Page) {
   await page.goto('/');
   await expect(page.getByRole('dialog')).toContainText('See the world in motion.');
   await page.getByRole('button', { name: /Global Demo/ }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('.map-surface')).toHaveAttribute('data-engine', 'three');
 }
 
@@ -29,7 +30,103 @@ async function cameraState(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.clear());
+  await page.addInitScript(() => { localStorage.clear(); sessionStorage.clear(); });
+  for (const endpoint of ['satellites', 'clouds', 'ships', 'cameras']) {
+    await page.route(`**/api/v1/${endpoint}**`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ mode: 'live-beta', source: endpoint === 'satellites' ? 'celestrak' : endpoint === 'clouds' ? 'open-meteo-gfs' : 'fintraffic', status: 'unavailable', generatedAt: new Date().toISOString(), expiresAt: new Date().toISOString(), coverage: { kind: 'global' }, items: [] }) }));
+  }
+});
+
+test('satellite trails remain independent of aircraft and quality presets', async ({ page, isMobile }) => {
+  await enterDemo(page);
+  if (isMobile) await page.getByRole('button', { name: 'Expand panel' }).click();
+  const trail = page.getByRole('button', { name: 'Satellite trails & orbit', exact: true });
+  await expect(trail).toHaveAttribute('aria-pressed', 'true');
+  await trail.click();
+  await expect(trail).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', { name: 'Aircraft trails', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  expect(await page.evaluate(() => (window as any).__globe.satellites.showTrails)).toBe(false);
+  if (isMobile) await page.getByRole('button', { name: 'Collapse panel' }).click();
+  await page.getByRole('button', { name: 'Display settings' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /Balanced/ }).click();
+  await page.keyboard.press('Escape');
+  expect(await page.evaluate(() => (window as any).__globe.satellites.showTrails)).toBe(false);
+});
+
+test('API settings keep raw keys out of browser storage', async ({ page }) => {
+  let submitted: Record<string, string> = {};
+  await page.route('**/api/v1/connections', (route) => {
+    submitted = route.request().postDataJSON();
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ token: 'a'.repeat(64), expiresAt: new Date(Date.now() + 3_600_000).toISOString(), flightSource: 'adsbexchange', shipSource: 'aisstream' }) });
+  });
+  await enterDemo(page);
+  await page.getByRole('button', { name: 'Display settings' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('combobox', { name: 'Aircraft', exact: true }).selectOption('adsbexchange');
+  await dialog.getByLabel('RapidAPI key').fill('test-rapid-secret');
+  await dialog.getByRole('combobox', { name: 'Ships', exact: true }).selectOption('aisstream');
+  await dialog.getByLabel('AISStream key').fill('test-ais-secret');
+  await dialog.getByRole('button', { name: 'Apply connections' }).click();
+  await expect(dialog.locator('.data-settings').first().getByRole('status')).toContainText('Connection configured');
+  expect(submitted).toMatchObject({ rapidApiKey: 'test-rapid-secret', aisStreamKey: 'test-ais-secret' });
+  const storage = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }));
+  expect(storage).not.toContain('test-rapid-secret'); expect(storage).not.toContain('test-ais-secret');
+  await expect(dialog.getByLabel('RapidAPI key')).toHaveValue('');
+});
+
+test('cloud shader renders close tilted volumes without compilation errors', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (message) => { if (message.type() === 'error' && /Shader|WebGLProgram/.test(message.text())) errors.push(message.text()); });
+  await enterDemo(page);
+  await page.evaluate(() => {
+    const globe = (window as any).__globe;
+    globe.weather.useProfiles([{ longitude: 139.76, latitude: 35.68, validTime: new Date().toISOString(), groundAltitudeKm: 0, footprintKm: 10, levels: [{ pressureHpa: 850, altitudeKm: 1.5, coverPercent: 80 }] }]);
+    globe.controls.rig.range = 5;
+    globe.controls.rig.tilt = 65;
+    globe.controls.applyRig();
+    globe.callbacks.onCamera(globe.controls.snapshot());
+  });
+  await expect.poll(async () => (await cameraState(page)).height).toBeLessThan(10_000);
+  await page.locator('.globe-canvas').screenshot();
+  expect(errors).toEqual([]);
+  await expectHealthyPage(page);
+});
+
+test('live ships and public cameras can be picked on the globe', async ({ page, isMobile }) => {
+  const now = new Date().toISOString();
+  const snapshot = (source: string, items: unknown[]) => ({ mode: 'live-beta', source, status: 'available', generatedAt: now, expiresAt: new Date(Date.now() + 60_000).toISOString(), coverage: { kind: 'region', name: 'Finland' }, items });
+  await page.route('**/api/v1/flights?**', (route) => route.fulfill({ json: { ...snapshot('adsb.lol', []), status: 'unavailable' } }));
+  await page.route('**/api/v1/weather**', (route) => route.fulfill({ json: { ...snapshot('rainviewer', []), status: 'unavailable' } }));
+  await page.route('**/api/v1/ships?**', (route) => route.fulfill({ json: snapshot('fintraffic', [{ id: '230123456', name: 'Public AIS vessel', longitude: 25, latitude: 60, heading: 90, speedKnots: 8, receivedAt: now, source: 'fintraffic' }]) }));
+  await page.route('**/api/v1/cameras', (route) => route.fulfill({ json: snapshot('fintraffic', [{ id: 'C01503', name: 'Public weather camera', longitude: 25.5, latitude: 60, imageUrl: 'https://weathercam.digitraffic.fi/C0150301.jpg', pageUrl: 'https://liikennetilanne.fintraffic.fi/', source: 'fintraffic' }]) }));
+  await page.route('https://weathercam.digitraffic.fi/**', (route) => route.fulfill({ status: 503 }));
+  await page.goto('/');
+  await page.getByRole('button', { name: /Live Beta/ }).click();
+  if (isMobile) await page.getByRole('button', { name: 'Expand panel' }).click();
+  await page.getByRole('button', { name: /^Ships / }).click();
+  await page.getByRole('button', { name: /^Public cameras / }).click();
+  if (isMobile) await page.getByRole('button', { name: 'Collapse panel' }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__globe.publicContacts.shipRecords.length)).toBe(1);
+  await page.evaluate(() => {
+    const globe = (window as any).__globe;
+    const lat = Math.PI / 3, lon = 25 * Math.PI / 180;
+    globe.controls.rig.target.set(Math.cos(lat) * Math.sin(lon), Math.sin(lat), Math.cos(lat) * Math.cos(lon));
+    globe.controls.rig.range = 200; globe.controls.rig.tilt = 35; globe.controls.applyRig();
+  });
+  const pick = async (kind: 'ship' | 'camera', id: string) => {
+    const point = await page.evaluate(({ kind, id }) => {
+      const globe = (window as any).__globe;
+      const p = globe.publicContacts.getPosition(kind, id).project(globe.camera);
+      const canvas = globe.renderer.domElement;
+      return { x: (p.x * 0.5 + 0.5) * canvas.clientWidth, y: (-p.y * 0.5 + 0.5) * canvas.clientHeight };
+    }, { kind, id });
+    await page.mouse.click(point.x, point.y);
+  };
+  await pick('ship', '230123456');
+  await expect(page.getByRole('complementary', { name: 'Public AIS vessel' })).toContainText('230123456');
+  await page.getByRole('complementary', { name: 'Public AIS vessel' }).getByRole('button', { name: 'Close' }).click();
+  await pick('camera', 'C01503');
+  await expect(page.getByRole('complementary', { name: 'Public weather camera' })).toContainText('Image unavailable');
+  await expect(page.getByRole('link', { name: 'Open original source' })).toHaveAttribute('href', 'https://liikennetilanne.fintraffic.fi/');
 });
 
 test('Demo stays separate and supports the primary exploration flow', async ({ page }) => {
