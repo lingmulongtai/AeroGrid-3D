@@ -6,12 +6,20 @@ All notable changes to AeroGrid 3D are documented here.
 
 ### Changed
 
+- Restored keyless regional aircraft using adsb.lol; retained selectable legacy and paid providers with position-age validation.
+- Replaced flat cloud sprites with physical ellipsoid volumes and fragment depth, preventing ground intersections in tilted views; removed synthetic HDR flashes while retaining bloom.
+- Separated aircraft and satellite trajectory controls and made ISS/Tiangong names obey the label setting.
+
 - Replaced the Cesium globe with a custom three.js renderer: viewport-prioritised imagery quadtree, polar caps, physically based atmosphere, day/night lighting with city lights, MSAA and bloom.
 - Google Earth style controls: zoom towards the cursor without drift, Ctrl / Shift / right-drag tilt, Alt-drag rotation, inertia, fly-to and object tracking.
 - Moved the search bar to the top centre, replaced the bottom dock with a collapsible sidebar, and made the fullscreen button toggle.
 - Tightened the Content Security Policy: scripts no longer need `unsafe-eval`.
 
 ### Added
+
+- Cached CelesTrak OMM / SGP4 orbit predictions, GFS cloud altitude profiles, and recent Fintraffic AIS reports and public cameras in Live Beta.
+- Private one-hour server connections for optional AISStream and paid RapidAPI keys, with cancellation and cooldown retained across reconnects.
+- Coordinate-based registration of public owner-enabled YouTube embeds, source/freshness details, and a sourced setup guide.
 
 - Faceted 3D aircraft, satellite and space-station models with satellite light trails.
 - Particle clouds, rain and lightning; Live Beta radar is converted to particles.

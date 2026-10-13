@@ -16,7 +16,6 @@ export type QualitySettings = {
   maxFlights: number;
   maxSatellites: number;
   weatherParticles: number;
-  satelliteTrails: boolean;
 };
 
 export const QUALITY_PRESETS: Record<QualityPreset, QualitySettings> = {
@@ -33,7 +32,6 @@ export const QUALITY_PRESETS: Record<QualityPreset, QualitySettings> = {
     maxFlights: 600,
     maxSatellites: 300,
     weatherParticles: 4_000,
-    satelliteTrails: false,
   },
   medium: {
     preset: 'medium',
@@ -48,7 +46,6 @@ export const QUALITY_PRESETS: Record<QualityPreset, QualitySettings> = {
     maxFlights: 1_500,
     maxSatellites: 1_200,
     weatherParticles: 10_000,
-    satelliteTrails: true,
   },
   high: {
     preset: 'high',
@@ -63,7 +60,6 @@ export const QUALITY_PRESETS: Record<QualityPreset, QualitySettings> = {
     maxFlights: 2_500,
     maxSatellites: 2_400,
     weatherParticles: 18_000,
-    satelliteTrails: true,
   },
   ultra: {
     preset: 'ultra',
@@ -78,7 +74,6 @@ export const QUALITY_PRESETS: Record<QualityPreset, QualitySettings> = {
     maxFlights: 4_000,
     maxSatellites: 4_200,
     weatherParticles: 30_000,
-    satelliteTrails: true,
   },
 };
 

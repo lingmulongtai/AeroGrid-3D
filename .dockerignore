@@ -3,6 +3,11 @@ dist
 server-dist
 .git
 .env
+.env.*
+.cache
+.codex
+.codex-remote-attachments
+artifacts
 .DS_Store
 *.log
 coverage

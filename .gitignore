@@ -1,4 +1,7 @@
 node_modules/
+.cache/
+.codex/
+.codex-remote-attachments/
 build/
 dist/
 server-dist/

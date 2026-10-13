@@ -22,7 +22,8 @@ export type RadiusCoverage = {
   radiusNm: number;
 };
 
-export type DataCoverage = GlobalCoverage | RadiusCoverage;
+export type RegionCoverage = { kind: 'region'; name: string };
+export type DataCoverage = GlobalCoverage | RadiusCoverage | RegionCoverage;
 
 export interface DataSnapshot<T> {
   mode: AppMode;
