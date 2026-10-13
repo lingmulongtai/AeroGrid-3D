@@ -4,19 +4,28 @@ import {
   BufferGeometry,
   CanvasTexture,
   Group,
+  InstancedBufferAttribute,
+  InstancedBufferGeometry,
   LineSegments,
+  Matrix4,
+  Mesh,
   NormalBlending,
-  Points,
+  PlaneGeometry,
   ShaderMaterial,
   SRGBColorSpace,
   Vector3,
+  Vector2,
+  type PerspectiveCamera,
   type IUniform,
 } from 'three';
 import { DEG, EARTH_RADIUS_KM, enuFrame, lonLatToVector, wrapLongitude } from '../geo';
+import { cloudHalfHeight } from './cloudVolume';
+import type { CloudProfile } from '../../../shared/live';
 
 interface CloudParticle {
   position: Vector3;
   size: number;
+  halfHeight?: number;
   opacity: number;
   shade: number;
   swirlAxis: Vector3;
@@ -70,17 +79,20 @@ attribute float size;
 attribute float opacity;
 attribute float shade;
 attribute vec4 swirl;
-attribute float lightning;
+attribute vec3 cloudCenter;
+attribute float halfHeight;
 attribute float seed;
 uniform float time;
 uniform float pixelsPerRadian;
-uniform float maxPixels;
 uniform vec3 sunDirection;
 uniform float nightStyle;
+uniform vec3 cameraWorld;
 varying float vAlpha;
 varying vec3 vColor;
 varying float vRotation;
-varying float vFlash;
+varying vec3 vCenter;
+varying vec3 vNormal;
+varying vec2 vRadii;
 
 vec3 rotateAround(vec3 p, vec3 axis, float angle) {
   float c = cos(angle);
@@ -89,13 +101,40 @@ vec3 rotateAround(vec3 p, vec3 axis, float angle) {
 }
 
 void main() {
-  vec3 p = position;
+  vec3 p = cloudCenter;
   if (swirl.w != 0.0) p = rotateAround(p, swirl.xyz, swirl.w * time);
   vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
   float distance = max(-mvPosition.z, 0.001);
   float pixels = size / distance * pixelsPerRadian;
-  gl_PointSize = clamp(pixels, 0.0, maxPixels);
-  gl_Position = projectionMatrix * mvPosition;
+  vCenter = p;
+  vNormal = normalize(p);
+  vRadii = vec2(size * 0.5, halfHeight);
+  // Conservative screen bounds; fragments ray-test the physical volume.
+  float radius = size * 0.5;
+  float cameraRadius = length(cameraWorld);
+  float centerRadius = length(p);
+  float horizon = acos(clamp(6371.0 / cameraRadius, 0.0, 1.0))
+    + acos(clamp(6371.0 / (centerRadius + halfHeight), 0.0, 1.0))
+    + asin(clamp(radius / centerRadius, 0.0, 1.0));
+  if (mvPosition.z > radius || dot(normalize(cameraWorld), vNormal) < cos(horizon)) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    vAlpha = 0.0; vColor = vec3(0.0); vRotation = 0.0;
+    return;
+  }
+  if (-mvPosition.z <= radius) {
+    gl_Position = vec4(position.xy, 0.0, 1.0);
+  } else {
+    vec3 viewNormal = mat3(viewMatrix) * vNormal;
+    vec2 extent = sqrt(vec2(radius * radius) * (1.0 - viewNormal.xy * viewNormal.xy)
+      + halfHeight * halfHeight * viewNormal.xy * viewNormal.xy);
+    vec4 clip = projectionMatrix * mvPosition;
+    vec2 scale = vec2(projectionMatrix[0][0], projectionMatrix[1][1]);
+    float nearDepth = max(0.001, -mvPosition.z - radius);
+    // Off-centre volumes also shift in perspective as their depth changes.
+    vec2 screenExtent = extent * scale * clip.w / nearDepth + abs(clip.xy) * radius / nearDepth;
+    clip.xy += position.xy * screenExtent;
+    gl_Position = clip;
+  }
 
   vec3 normal = normalize(p);
   float sunDot = dot(normal, sunDirection);
@@ -105,13 +144,8 @@ void main() {
   float twilight = smoothstep(-0.12, 0.02, sunDot) * (1.0 - smoothstep(0.02, 0.22, sunDot));
   vec3 night = vec3(0.025, 0.032, 0.05);
   vColor = mix(night, mix(day, sunset, twilight * 0.85), light * (1.0 - nightStyle * 0.88));
-  float flash = lightning * pow(max(0.0, sin(time * (1.7 + seed * 2.3) + seed * 61.0)), 90.0);
-  vFlash = flash;
-  vColor += vec3(0.75, 0.82, 1.0) * flash * 3.5;
-
-  float nearFade = smoothstep(size * 0.35, size * 1.8, distance);
   float tinyFade = smoothstep(0.6, 2.2, pixels);
-  vAlpha = opacity * nearFade * tinyFade;
+  vAlpha = opacity * tinyFade;
   vRotation = seed * 6.2831;
   #include <logdepthbuf_vertex>
 }
@@ -122,18 +156,49 @@ const CLOUD_FRAGMENT = /* glsl */ `
 #include <logdepthbuf_pars_fragment>
 uniform sampler2D puff;
 uniform float globalOpacity;
+uniform vec3 cameraWorld;
+uniform vec2 viewport;
+uniform mat4 inverseProjection;
+uniform mat4 cameraMatrix;
 varying float vAlpha;
 varying vec3 vColor;
 varying float vRotation;
-varying float vFlash;
+varying vec3 vCenter;
+varying vec3 vNormal;
+varying vec2 vRadii;
+float metric(vec3 a, vec3 b) {
+  float h2 = vRadii.x * vRadii.x;
+  float v2 = vRadii.y * vRadii.y;
+  return dot(a, b) / h2 + (1.0 / v2 - 1.0 / h2) * dot(a, vNormal) * dot(b, vNormal);
+}
 void main() {
-  #include <logdepthbuf_fragment>
-  vec2 uv = gl_PointCoord - 0.5;
+  vec2 ndc = gl_FragCoord.xy / viewport * 2.0 - 1.0;
+  vec4 view = inverseProjection * vec4(ndc, 1.0, 1.0);
+  vec3 ray = normalize(mat3(cameraMatrix) * view.xyz);
+  vec3 offset = cameraWorld - vCenter;
+  float a = metric(ray, ray);
+  float closestTime = -metric(offset, ray) / a;
+  vec3 closest = offset + ray * closestTime;
+  float remaining = 1.0 - metric(closest, closest);
+  if (remaining <= 0.0) discard;
+  float span = sqrt(remaining / a);
+  float enter = max(0.001, closestTime - span);
+  float exit = closestTime + span;
+  if (exit <= enter) discard;
+  vec3 hit = cameraWorld + ray * enter;
+  float clipW = -(viewMatrix * vec4(hit, 1.0)).z;
+  if (clipW <= 0.0) discard;
+  gl_FragDepth = log2(1.0 + clipW) * logDepthBufFC * 0.5;
+  vec3 east = normalize(cross(abs(vNormal.y) > 0.99 ? vec3(1,0,0) : vec3(0,1,0), vNormal));
+  vec3 north = cross(vNormal, east);
+  vec3 local = hit - vCenter;
+  vec2 uv = vec2(dot(local, east), dot(local, north)) / vRadii.x * 0.5;
   float c = cos(vRotation);
   float s = sin(vRotation);
   uv = vec2(c * uv.x - s * uv.y, s * uv.x + c * uv.y) + 0.5;
   float density = texture2D(puff, uv).a;
-  float alpha = density * vAlpha * globalOpacity;
+  float chord = min(1.0, (exit - enter) / (vRadii.y * 2.0));
+  float alpha = density * vAlpha * globalOpacity * smoothstep(0.0, 0.3, chord);
   if (alpha < 0.004) discard;
   gl_FragColor = vec4(vColor, min(1.0, alpha * 1.6));
   #include <tonemapping_fragment>
@@ -389,12 +454,14 @@ async function sampleRadar(urlTemplate: string, center: { latitude: number; long
 
 export class WeatherLayer {
   readonly group = new Group();
-  private clouds: Points;
+  private clouds: Mesh;
   private rain: LineSegments;
   private cloudMaterial: ShaderMaterial;
   private rainMaterial: ShaderMaterial;
-  private source: 'demo' | 'radar' | 'off' = 'off';
+  private source: 'demo' | 'radar' | 'profiles' | 'off' = 'off';
+  private profiles: CloudProfile[] = [];
   private radarKey = '';
+  private rainRadarKey = '';
   private abort: AbortController | null = null;
   private budget = 12_000;
   readonly uniforms: Record<string, IUniform>;
@@ -404,7 +471,9 @@ export class WeatherLayer {
     this.uniforms = {
       time: { value: 0 },
       pixelsPerRadian: { value: 1000 },
-      maxPixels: { value: 360 },
+      viewport: { value: new Vector2(1, 1) },
+      inverseProjection: { value: new Matrix4() },
+      cameraMatrix: { value: new Matrix4() },
       sunDirection,
       puff: { value: createPuffTexture() },
       globalOpacity: { value: 0.85 },
@@ -427,7 +496,7 @@ export class WeatherLayer {
       depthWrite: false,
       blending: AdditiveBlending,
     });
-    this.clouds = new Points(new BufferGeometry(), this.cloudMaterial);
+    this.clouds = new Mesh(new InstancedBufferGeometry(), this.cloudMaterial);
     this.clouds.frustumCulled = false;
     this.clouds.renderOrder = 8;
     this.rain = new LineSegments(new BufferGeometry(), this.rainMaterial);
@@ -437,7 +506,7 @@ export class WeatherLayer {
   }
 
   get particleCount() {
-    return this.group.visible ? (this.clouds.geometry.getAttribute('position')?.count ?? 0) : 0;
+    return this.group.visible ? ((this.clouds.geometry as InstancedBufferGeometry).instanceCount || 0) : 0;
   }
 
   setBudget(budget: number) {
@@ -447,6 +516,7 @@ export class WeatherLayer {
     this.source = 'off';
     this.radarKey = '';
     if (source === 'demo') this.useDemo();
+    else if (source === 'profiles') this.useProfiles(this.profiles);
   }
 
   setNightStyle(enabled: boolean) {
@@ -482,42 +552,92 @@ export class WeatherLayer {
       });
   }
 
+  useProfiles(profiles: CloudProfile[]) {
+    if (this.source === 'profiles' && this.profiles === profiles) return;
+    if (this.source !== 'profiles') this.abort?.abort();
+    this.source = 'profiles'; this.profiles = profiles;
+    const random = mulberry32(20261013);
+    const particles: CloudParticle[] = [];
+    const active = profiles.flatMap((profile) => profile.levels.filter((level) => level.coverPercent >= 10).map((level) => ({ profile, level })));
+    const perLevel = Math.max(1, Math.floor(this.budget / Math.max(1, active.length)));
+    for (const { profile, level } of active) {
+      const size = Math.max(3, profile.footprintKm / 12);
+      const count = Math.min(Math.floor(perLevel * level.coverPercent / 100), Math.ceil(2 * (profile.footprintKm / size) ** 2 * level.coverPercent / 100));
+      for (let i = 0; i < count; i++) {
+        const [lon, lat] = offsetLonLat(profile.longitude, profile.latitude, (random() - 0.5) * profile.footprintKm, (random() - 0.5) * profile.footprintKm);
+        // Pressure-level altitude is modelled AMSL; radar intensity never sets height.
+        const altitude = level.altitudeKm;
+        particles.push({ position: lonLatToVector(lon, lat, altitude), size, halfHeight: Math.max(0.01, Math.min(cloudHalfHeight(altitude, size), altitude - profile.groundAltitudeKm - 0.05)), opacity: 0.25 + level.coverPercent / 250, shade: level.pressureHpa >= 850 ? 0.3 : 0.1, swirlAxis: new Vector3(0, 1, 0), swirlRate: 0, lightning: 0, seed: random() * 10 });
+      }
+    }
+    this.apply(particles, false);
+  }
+
+  useRadarRain(urlTemplate: string | null, center: { latitude: number; longitude: number }, radiusKm: number, onError: () => void) {
+    if (!urlTemplate) { this.rainRadarKey = ''; this.abort?.abort(); this.applyRain([]); return; }
+    const key = `${urlTemplate}|${center.latitude.toFixed(2)}|${center.longitude.toFixed(2)}|${radiusKm}`;
+    if (key === this.rainRadarKey) return;
+    this.abort?.abort(); this.rainRadarKey = key;
+    const controller = new AbortController(); this.abort = controller;
+    void sampleRadar(urlTemplate, center, radiusKm, Math.min(2000, this.budget), controller.signal).then((particles) => {
+      if (controller.signal.aborted) return;
+      // Radar observes precipitation only. Column tops are an illustration using
+      // the nearest forecast cloud level (or 2.5 km when no forecast is available).
+      for (const particle of particles) {
+        const longitude = Math.atan2(particle.position.x, particle.position.z) / DEG;
+        const latitude = Math.asin(particle.position.y / particle.position.length()) / DEG;
+        const profile = [...this.profiles].sort((a, b) => Math.hypot(a.longitude - longitude, a.latitude - latitude) - Math.hypot(b.longitude - longitude, b.latitude - latitude))[0];
+        const altitude = profile?.levels.find((level) => level.coverPercent >= 10)?.altitudeKm ?? 2.5;
+        particle.position.copy(lonLatToVector(longitude, latitude, altitude));
+      }
+      this.applyRain(particles);
+    }).catch((error) => { if (!controller.signal.aborted) { this.applyRain([]); onError(); } });
+  }
+
   clear() {
     this.abort?.abort();
     this.source = 'off';
     this.radarKey = '';
+    this.rainRadarKey = '';
     this.apply([]);
   }
 
-  private apply(particles: CloudParticle[]) {
+  private apply(particles: CloudParticle[], includeRain = true) {
     const count = particles.length;
     const positions = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
     const opacities = new Float32Array(count);
     const shades = new Float32Array(count);
     const swirls = new Float32Array(count * 4);
-    const lightning = new Float32Array(count);
     const seeds = new Float32Array(count);
+    const thicknesses = new Float32Array(count);
     particles.forEach((p, i) => {
       positions.set([p.position.x, p.position.y, p.position.z], i * 3);
       sizes[i] = p.size;
       opacities[i] = p.opacity;
       shades[i] = p.shade;
       swirls.set([p.swirlAxis.x, p.swirlAxis.y, p.swirlAxis.z, p.swirlRate], i * 4);
-      lightning[i] = p.lightning;
       seeds[i] = p.seed;
+      thicknesses[i] = p.halfHeight ?? cloudHalfHeight(p.position.length() - EARTH_RADIUS_KM, p.size);
     });
-    const geometry = new BufferGeometry();
-    geometry.setAttribute('position', new BufferAttribute(positions, 3));
-    geometry.setAttribute('size', new BufferAttribute(sizes, 1));
-    geometry.setAttribute('opacity', new BufferAttribute(opacities, 1));
-    geometry.setAttribute('shade', new BufferAttribute(shades, 1));
-    geometry.setAttribute('swirl', new BufferAttribute(swirls, 4));
-    geometry.setAttribute('lightning', new BufferAttribute(lightning, 1));
-    geometry.setAttribute('seed', new BufferAttribute(seeds, 1));
+    const quad = new PlaneGeometry(2, 2);
+    const geometry = new InstancedBufferGeometry();
+    geometry.index = quad.index;
+    geometry.setAttribute('position', quad.getAttribute('position'));
+    geometry.setAttribute('cloudCenter', new InstancedBufferAttribute(positions, 3));
+    geometry.setAttribute('size', new InstancedBufferAttribute(sizes, 1));
+    geometry.setAttribute('opacity', new InstancedBufferAttribute(opacities, 1));
+    geometry.setAttribute('shade', new InstancedBufferAttribute(shades, 1));
+    geometry.setAttribute('swirl', new InstancedBufferAttribute(swirls, 4));
+    geometry.setAttribute('seed', new InstancedBufferAttribute(seeds, 1));
+    geometry.setAttribute('halfHeight', new InstancedBufferAttribute(thicknesses, 1));
+    geometry.instanceCount = count;
     this.clouds.geometry.dispose();
     this.clouds.geometry = geometry;
+    if (includeRain || particles.length === 0) this.applyRain(particles);
+  }
 
+  private applyRain(particles: CloudParticle[]) {
     const random = mulberry32(99);
     const rainSources = particles.filter((p) => p.shade > 0.45 && p.swirlRate === 0);
     const streaksPer = 7;
@@ -555,11 +675,15 @@ export class WeatherLayer {
     this.rain.geometry = rainGeometry;
   }
 
-  update(seconds: number, pixelsPerRadian: number, cameraPosition: Vector3) {
+  update(seconds: number, pixelsPerRadian: number, camera: PerspectiveCamera, viewport: Vector2) {
+    const cameraPosition = camera.position;
     this.group.visible = this.visible && this.source !== 'off';
     this.uniforms.time.value = seconds;
     this.uniforms.pixelsPerRadian.value = pixelsPerRadian;
     (this.uniforms.cameraWorld.value as Vector3).copy(cameraPosition);
+    (this.uniforms.viewport.value as Vector2).copy(viewport);
+    (this.uniforms.inverseProjection.value as Matrix4).copy(camera.projectionMatrixInverse);
+    (this.uniforms.cameraMatrix.value as Matrix4).copy(camera.matrixWorld);
     this.rain.visible = cameraPosition.length() - EARTH_RADIUS_KM < 1_500;
   }
 

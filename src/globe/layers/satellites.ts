@@ -151,7 +151,7 @@ export class SatelliteLayer {
   private selectedOrbitId: string | null = null;
 
   private updateOrbit(record: SatelliteRecord | undefined, now: number, sidereal: number, origin: Vector3) {
-    if (!record) {
+    if (!record || !this.showTrails) {
       this.orbitLine.visible = false;
       return;
     }

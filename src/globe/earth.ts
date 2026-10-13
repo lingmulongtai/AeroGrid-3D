@@ -17,6 +17,7 @@ import {
 import { EARTH_RADIUS_KM, MERCATOR_MAX_LATITUDE, lonLatToVector } from './geo';
 import { SURFACE_FRAGMENT, TILE_VERTEX } from './shaders';
 import { cameraFrustum, TileLayer, TileScheduler, type TileSource } from './tiles';
+import { GeographicOutlines } from './layers/geographicOutlines';
 
 export type MapStyle = 'dark' | 'satellite' | 'night';
 
@@ -120,9 +121,9 @@ export const STYLES: Record<MapStyle, StyleDefinition> = {
 };
 
 export const ATTRIBUTION: Record<MapStyle, string> = {
-  satellite: 'Sentinel-2 cloudless © EOX (CC BY-NC-SA 4.0) · Esri World Imagery',
+  satellite: 'Sentinel-2 cloudless © EOX (CC BY-NC-SA 4.0) · Esri World Imagery · Natural Earth',
   dark: 'Esri World Dark Gray Base',
-  night: 'NASA GIBS VIIRS Black Marble',
+  night: 'NASA GIBS VIIRS Black Marble · Natural Earth',
 };
 
 function polarCapGeometry(north: boolean): BufferGeometry {
@@ -173,6 +174,7 @@ export class Earth {
   private textures: Record<'day' | 'night', Texture>;
   private style: MapStyle | null = null;
   private realisticLighting = true;
+  private outlines: GeographicOutlines;
   private frustum = cameraFrustum(new PerspectiveCamera());
 
   constructor(private renderer: WebGLRenderer, private quality: EarthQuality, private offline: boolean, onTileLoaded: () => void) {
@@ -206,6 +208,8 @@ export class Earth {
     this.base.renderOrder = -5;
     this.base.name = 'earth-base';
     this.group.add(this.base);
+    this.outlines = new GeographicOutlines(this.uniforms.sunDirection, this.uniforms.lighting);
+    this.group.add(this.outlines.group);
   }
 
   private createMaterial(map: Texture | null, color: string) {
@@ -229,6 +233,7 @@ export class Earth {
   setStyle(style: MapStyle) {
     if (style === this.style) return;
     this.style = style;
+    this.outlines.group.visible = style !== 'dark';
     const definition = STYLES[style];
     for (const layer of this.layers) layer.dispose();
     this.layers = [];
@@ -297,6 +302,7 @@ export class Earth {
   }
 
   update(camera: PerspectiveCamera, frame: number, viewportHeight: number) {
+    this.outlines.update(camera.position.length() - EARTH_RADIUS_KM);
     if (!this.layers.length) return;
     cameraFrustum(camera, this.frustum);
     const cameraPosition = camera.position;
@@ -322,6 +328,7 @@ export class Earth {
   }
 
   dispose() {
+    this.outlines.dispose();
     for (const layer of this.layers) layer.dispose();
     this.base.geometry.dispose();
     (this.base.material as ShaderMaterial).dispose();

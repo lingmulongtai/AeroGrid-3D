@@ -43,6 +43,9 @@ steps:
       - '--max'
       - '1'
       - '--allow-unauthenticated'
+      - '--session-affinity'
+      - '--update-env-vars'
+      - 'ORBIT_CACHE_PATH=gs://$PROJECT_ID-orbit-cache/orbits.json'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aerogrid-3d:$COMMIT_SHA'

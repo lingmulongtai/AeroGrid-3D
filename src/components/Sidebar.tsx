@@ -1,5 +1,5 @@
 import {
-  ChevronDown, ChevronUp, CloudRain, Languages, MapPin, Plane, RefreshCw, Route, Satellite, Tags,
+  ChevronDown, ChevronUp, CloudRain, Languages, MapPin, Plane, RefreshCw, Route, Satellite, Tags, Ship, Camera,
 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { AppMode } from '../../shared/contracts';
@@ -24,6 +24,8 @@ interface SidebarProps {
   onLoadArea: () => void;
   defaultCollapsed: boolean;
   t: Translator;
+  sourceDetails: Record<'satellites' | 'weather' | 'ships' | 'cameras', string>;
+  sourceNotes: string[];
 }
 
 const STORAGE_KEY = 'aerogrid.sidebar.collapsed';
@@ -31,7 +33,7 @@ const STORAGE_KEY = 'aerogrid.sidebar.collapsed';
 export function Sidebar({
   mode, locale, layers, counts, colorMode, mapStyle, weatherOpacity,
   onToggleLayer, onModeChange, onLocaleChange, onColorModeChange, onMapStyleChange,
-  onWeatherOpacityChange, onLoadArea, defaultCollapsed, t,
+  onWeatherOpacityChange, onLoadArea, defaultCollapsed, t, sourceDetails, sourceNotes,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -64,10 +66,15 @@ export function Sidebar({
           <PanelGroup label={t('controls.layers')}>
             <div className="layer-list">
               <LayerToggle icon={<Plane />} label={t('controls.flights')} detail={number.format(counts.aircraft)} active={layers.flights} onClick={() => onToggleLayer('flights')} tone="amber" />
-              <LayerToggle icon={<Satellite />} label={t('controls.satellites')} detail={number.format(counts.satellites)} active={layers.satellites} onClick={() => onToggleLayer('satellites')} tone="cyan" />
-              <LayerToggle icon={<CloudRain />} label={t('controls.weather')} detail={mode === 'demo' ? t('weather.particlesDemo') : t('weather.particlesRadar')} active={layers.weather} onClick={() => onToggleLayer('weather')} tone="blue" />
+              <LayerToggle icon={<Satellite />} label={t('controls.satellites')} detail={`${number.format(counts.satellites)} · ${sourceDetails.satellites}`} active={layers.satellites} onClick={() => onToggleLayer('satellites')} tone="cyan" />
+              <LayerToggle icon={<CloudRain />} label={t('controls.weather')} detail={sourceDetails.weather} active={layers.weather} onClick={() => onToggleLayer('weather')} tone="blue" />
+              {mode === 'live-beta' && <>
+                <LayerToggle icon={<Ship />} label={t('data.ships')} detail={sourceDetails.ships} active={layers.ships} onClick={() => onToggleLayer('ships')} tone="cyan" />
+                <LayerToggle icon={<Camera />} label={t('data.cameras')} detail={sourceDetails.cameras} active={layers.cameras} onClick={() => onToggleLayer('cameras')} tone="neutral" />
+              </>}
               <LayerToggle icon={<MapPin />} label={t('controls.airports')} detail={number.format(counts.airports)} active={layers.airports} onClick={() => onToggleLayer('airports')} tone="teal" />
               <LayerToggle icon={<Route />} label={t('controls.trails')} active={layers.flightTrails} onClick={() => onToggleLayer('flightTrails')} tone="amber" />
+              <LayerToggle icon={<Route />} label={t('settings.trails')} active={layers.satelliteTrails} onClick={() => onToggleLayer('satelliteTrails')} tone="cyan" />
               <LayerToggle icon={<Tags />} label={t('controls.labels')} active={layers.labels} onClick={() => onToggleLayer('labels')} tone="neutral" />
             </div>
           </PanelGroup>
@@ -115,7 +122,8 @@ export function Sidebar({
             <Segmented options={[['en', 'English'], ['ja', '日本語']]} value={locale} onChange={(value) => onLocaleChange(value as Locale)} />
           </PanelGroup>
 
-          <p className="sidebar-note">{t('controls.spaceBody')}</p>
+          {mode === 'live-beta' && <details className="source-details"><summary>{t('data.sourceDetails')}</summary>{sourceNotes.map((note, i) => <p key={i}>{note}</p>)}</details>}
+          <p className="sidebar-note">{mode === 'demo' ? t('controls.spaceBody') : t('data.liveBody')}</p>
         </div>
       </div>
     </aside>

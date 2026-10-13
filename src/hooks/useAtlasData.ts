@@ -7,6 +7,7 @@ import type {
   WeatherFrame,
 } from '../../shared/contracts';
 import { calculateFlightStats, generateRealisticDemoFlights, type FlightStats } from './useFlightData';
+import { connectionHeaders, readConnection } from '../data/connections';
 
 const LIVE_REFRESH_MS = 60_000;
 const DEMO_REFRESH_MS = 20_000;
@@ -82,8 +83,10 @@ export function useAtlasData({
         lon: String(coverage.center.longitude),
         radius_nm: String(coverage.radiusNm),
       });
-      const response = await fetch(`/api/v1/flights?${params}`, { signal });
+      const response = await fetch(`/api/v1/flights?${params}`, { signal, headers: connectionHeaders() });
+      if (!response.ok && response.status !== 429) throw new Error(response.status === 401 ? 'Connection expired; reconnect in settings' : `Flight API HTTP ${response.status}`);
       const snapshot = await response.json() as DataSnapshot<FlightRecord>;
+      if (signal?.aborted) return;
       if (snapshot.mode !== 'live-beta' || snapshot.source === 'demo' || !Array.isArray(snapshot.items)) {
         throw new Error('The Live Beta endpoint returned an invalid data contract');
       }
@@ -98,13 +101,13 @@ export function useAtlasData({
         setFlightSnapshot({ ...previous, status: 'stale', message: (error as Error).message });
       } else {
         setFlightSnapshot({
-          ...emptySnapshot<FlightRecord>('live-beta', 'airplanes.live'),
+          ...emptySnapshot<FlightRecord>('live-beta', readConnection()?.flightSource ?? 'adsb.lol'),
           coverage,
           message: (error as Error).message,
         });
       }
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [coverage, flightsEnabled, mode]);
 
@@ -113,6 +116,7 @@ export function useAtlasData({
     try {
       const response = await fetch(forceRefresh ? '/api/v1/weather?refresh=1' : '/api/v1/weather', { signal });
       const snapshot = await response.json() as DataSnapshot<WeatherFrame>;
+      if (signal?.aborted) return;
       if (snapshot.mode !== 'live-beta' || snapshot.source === 'demo' || !Array.isArray(snapshot.items)) {
         throw new Error('The weather endpoint returned an invalid data contract');
       }
@@ -153,11 +157,13 @@ export function useAtlasData({
     }
 
     const controller = new AbortController();
+    setFlightSnapshot({ ...emptySnapshot<FlightRecord>('live-beta', readConnection()?.flightSource ?? 'adsb.lol'), coverage });
+    setLoading(false);
     void loadLiveFlights(controller.signal);
     void loadWeather(controller.signal);
     const interval = window.setInterval(() => {
-      void loadLiveFlights();
-      void loadWeather();
+      void loadLiveFlights(controller.signal);
+      void loadWeather(controller.signal);
     }, LIVE_REFRESH_MS);
     return () => {
       controller.abort();
@@ -165,13 +171,14 @@ export function useAtlasData({
     };
   }, [demoFlightCount, flightsEnabled, loadLiveFlights, loadWeather, mode, refreshToken, weatherEnabled]);
 
+  const visibleFlightSnapshot = flightSnapshot.mode === mode || !mode ? flightSnapshot : emptySnapshot<FlightRecord>(mode, mode === 'demo' ? 'demo' : readConnection()?.flightSource ?? 'adsb.lol');
   const flightStats = calculateFlightStats(
-    flightSnapshot.items,
-    mode === 'live-beta' && flightSnapshot.status === 'available',
-    flightSnapshot.status === 'rate-limited',
+    visibleFlightSnapshot.items,
+    mode === 'live-beta' && visibleFlightSnapshot.status === 'available',
+    visibleFlightSnapshot.status === 'rate-limited',
   );
 
   const refreshWeather = useCallback(() => loadWeather(undefined, true), [loadWeather]);
 
-  return { flightSnapshot, weatherSnapshot, flightStats, loading, refreshWeather };
+  return { flightSnapshot: visibleFlightSnapshot, weatherSnapshot, flightStats, loading, refreshWeather };
 }
