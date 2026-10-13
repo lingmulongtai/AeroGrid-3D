@@ -281,7 +281,7 @@ export function App() {
       )}
 
       {settingsOpen && (
-        <SettingsDialog quality={quality} onChange={updateQuality} onClose={closeSettings} readStats={readStats} t={t} />
+        <SettingsDialog quality={quality} onChange={updateQuality} onClose={closeSettings} readStats={readStats} t={t} onDataChange={() => setRefreshToken((token) => token + 1)} />
       )}
 
       {!mode && <WelcomeDialog locale={locale} onLocaleChange={updateLocale} onSelectMode={updateMode} t={t} />}
