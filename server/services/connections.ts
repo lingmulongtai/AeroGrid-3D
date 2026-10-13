@@ -5,6 +5,7 @@ import type { ConnectionPreferences, ShipRecord } from '../../shared/live.js';
 import { AirplanesLiveProvider } from '../providers/airplanesLive.js';
 import { createAtlasDataService, type AtlasDataService, type FlightQuery } from './atlasData.js';
 import { DailyQuota } from '../lib/quota.js';
+import { ProviderError } from '../providers/errors.js';
 
 const SESSION_MS = 60 * 60_000;
 interface Connection {
@@ -21,15 +22,19 @@ interface Connection {
 export class Connections {
   private sessions = new Map<string, Connection>();
   private readonly paidQuota = new DailyQuota(450);
+  private paidQueue: Promise<void> = Promise.resolve();
+  private nextPaidRequestAt = 0;
+  private paidBlockedUntil = 0;
   private readonly legacyFlights = createAtlasDataService({ flightProvider: new AirplanesLiveProvider(), flightSource: 'airplanes.live' });
   constructor(private readonly freeFlights: AtlasDataService = createAtlasDataService()) {}
-  create(preferences: ConnectionPreferences) {
+  create(input: ConnectionPreferences) {
+    const preferences = { ...input };
     this.sweep();
     if (this.sessions.size >= 20) throw new Error('Connection limit reached; disconnect an existing session');
     const token = randomBytes(32).toString('hex');
     const expiresAt = Date.now() + SESSION_MS;
     const privateProvider = preferences.flightSource === 'adsbexchange' ? new AirplanesLiveProvider(fetch, Date.now, undefined, { source: 'adsbexchange', apiKey: preferences.rapidApiKey }) : undefined;
-    const flights = privateProvider ? createAtlasDataService({ flightProvider: privateProvider, flightSource: 'adsbexchange', quota: this.paidQuota }) : preferences.flightSource === 'airplanes.live' ? this.legacyFlights : this.freeFlights;
+    const flights = privateProvider ? createAtlasDataService({ flightProvider: { fetchFlights: (lat, lon, radius) => this.paidRequest(privateProvider, lat, lon, radius) }, flightSource: 'adsbexchange', quota: this.paidQuota }) : preferences.flightSource === 'airplanes.live' ? this.legacyFlights : this.freeFlights;
     this.sessions.set(token, { preferences, expiresAt, flights, privateProvider, ships: new Map(), connected: false });
     const timer = setTimeout(() => this.remove(token), SESSION_MS);
     timer.unref();
@@ -44,6 +49,22 @@ export class Connections {
   }
   close() { for (const token of this.sessions.keys()) this.remove(token); }
   private sweep() { for (const [token, session] of this.sessions) if (session.expiresAt <= Date.now()) this.remove(token); }
+  private paidRequest(provider: AirplanesLiveProvider, latitude: number, longitude: number, radiusNm: number) {
+    const request = this.paidQueue.then(async () => {
+      const now = Date.now();
+      if (now < this.paidBlockedUntil) throw new ProviderError('Paid provider retry is paused', 429, Math.ceil((this.paidBlockedUntil - now) / 1000));
+      const wait = this.nextPaidRequestAt - now;
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      this.nextPaidRequestAt = Date.now() + 1000;
+      try { return await provider.fetchFlights(latitude, longitude, radiusNm); }
+      catch (error) {
+        if (error instanceof ProviderError && error.statusCode === 429) this.paidBlockedUntil = Date.now() + Math.max(1, error.retryAfterSeconds ?? 86_400) * 1000;
+        throw error;
+      }
+    });
+    this.paidQueue = request.then(() => undefined, () => undefined);
+    return request;
+  }
   ships(session: Connection, query: FlightQuery): DataSnapshot<ShipRecord> {
     const boxKey = `${query.latitude.toFixed(2)}:${query.longitude.toFixed(2)}:${query.radiusNm}`;
     if (!session.socket && !session.message) {
