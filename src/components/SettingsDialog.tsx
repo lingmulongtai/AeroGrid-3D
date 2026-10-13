@@ -83,7 +83,6 @@ export function SettingsDialog({ quality, onChange, onClose, readStats, t }: Set
             </select>
           </Row>
           <Toggle label={t('settings.bloom')} checked={quality.bloom} onChange={(bloom) => update({ bloom })} />
-          <Toggle label={t('settings.trails')} checked={quality.satelliteTrails} onChange={(satelliteTrails) => update({ satelliteTrails })} />
         </section>
 
         <section className="panel-group">

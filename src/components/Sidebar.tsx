@@ -68,6 +68,7 @@ export function Sidebar({
               <LayerToggle icon={<CloudRain />} label={t('controls.weather')} detail={mode === 'demo' ? t('weather.particlesDemo') : t('weather.particlesRadar')} active={layers.weather} onClick={() => onToggleLayer('weather')} tone="blue" />
               <LayerToggle icon={<MapPin />} label={t('controls.airports')} detail={number.format(counts.airports)} active={layers.airports} onClick={() => onToggleLayer('airports')} tone="teal" />
               <LayerToggle icon={<Route />} label={t('controls.trails')} active={layers.flightTrails} onClick={() => onToggleLayer('flightTrails')} tone="amber" />
+              <LayerToggle icon={<Route />} label={t('settings.trails')} active={layers.satelliteTrails} onClick={() => onToggleLayer('satelliteTrails')} tone="cyan" />
               <LayerToggle icon={<Tags />} label={t('controls.labels')} active={layers.labels} onClick={() => onToggleLayer('labels')} tone="neutral" />
             </div>
           </PanelGroup>
