@@ -36,7 +36,9 @@ YouTubeは表示設定の「公開YouTube配信」へ動画URL・名前・緯度
 
 ローカルでは`.cache/orbits.json`を使用する。起動後もこのファイルを維持する。CelesTrakはGP/SupGPの取得を2時間以上空け、非200応答後は人が原因を調査するまで自動取得を止めるよう求めている。[利用方針](https://celestrak.org/usage-policy.php)
 
-本番環境では、永続ストレージ上のパスを`ORBIT_CACHE_PATH`へ設定しない限り、衛星の自動取得を開始しない。Cloud Runのコンテナ内一時ファイルは永続ストレージとして扱わない。現行のCloud Run設定に永続ボリュームは追加していない。複数プロセス・インスタンスから同じ取得元へ別々にダウンロードする運用も避ける。
+本番環境では、永続ストレージ上のパス、または`gs://bucket/object`を`ORBIT_CACHE_PATH`へ設定しない限り、衛星の自動取得を開始しない。Cloud Runのコンテナ内一時ファイルは永続ストレージとして扱わない。Cloud Storageでは既存の実行サービスIDで認証し、同じオブジェクトの世代番号を条件にして更新権を取得する。2地域・新旧revisionが重なっても、更新権を得たサーバーだけがCelesTrakを取得する。正常なキャッシュは2時間メモリーにも保持し、画面のポーリングごとにCloud Storageから全要素を再転送しない。[世代条件の仕様](https://docs.cloud.google.com/storage/docs/request-preconditions)
+
+既存Cloud Run公開先は`asia-northeast1`と`us-west1`。`gs://gen-lang-client-0867951986-orbit-cache/orbits.json`を共通の非公開キャッシュにする。東京側はリポジトリのCloud Build設定、西側は別の既存トリガーを使用する。ストレージは公開せず、APIキーも保存しない。デプロイ後の確認結果は[PR #22](https://github.com/lingmulongtai/AeroGrid-3D/pull/22)へ記録する。
 
 キャッシュに`blocked`が記録された場合は、HTTPエラー・提供元の告知・ネットワークを確認し、問題を解消した後に管理者がその項目を削除する。自動で解除しない。レスポンス時刻やキャッシュが壊れている場合も自動取得を止める。
 

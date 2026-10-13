@@ -2,7 +2,7 @@
 
 作業先: `C:/Users/lingm/Downloads/AeroGrid-3D-latest`。ブランチ: `codex/cloud-altitude-live-data`。
 
-`lingmulongtai/AeroGrid-3D`の最新main `e73312b7ce61953997d7067e09c5e44a4990e26d`を新規クローンした。元のダウンロードフォルダ・ブランチは変更していない。作業後もリモートmainが同じSHAであることを確認した。push、PR作成、公開デプロイは行っていない。
+`lingmulongtai/AeroGrid-3D`の最新main `e73312b7ce61953997d7067e09c5e44a4990e26d`を新規クローンした。元のダウンロードフォルダ・ブランチは変更していない。変更は専用ブランチへpushし、[PR #22](https://github.com/lingmulongtai/AeroGrid-3D/pull/22)を作成した。公開先は既存Cloud Runの[us-west1](https://aerogrid-3d-120246363924.us-west1.run.app/)と[asia-northeast1](https://aerogrid-3d-120246363924.asia-northeast1.run.app/)。マージ・デプロイ後のrevision、CI、公開API・画面検証結果はPRの説明へ記録する。
 
 ## 実装した内容
 
@@ -12,6 +12,8 @@
 - 無料のadsb.lol航空機、CelesTrak OMMからのSGP4軌道予測、GFS高度別雲予報、Fintrafficの船舶・公開カメラを接続した。観測、予測、デモを区別した。
 - 設定画面にAISStream無料キーとADS-B Exchange有料RapidAPIキーの入力、取得先・料金リンクを追加した。キーを返却・ブラウザー保存せず、1時間の個別サーバー接続として扱う。
 - 公開YouTube動画を座標付きで追加できる。配信元の公式プレーヤー・リンクを使用する。個々の動画のライブ状態や収益は保証しない。
+- 夜側を強調するNatural Earthの海岸線・国境を重ねた。昼側では薄く、近距離ではフェードする。衛星画像と昼夜照明は維持する。
+- 本番衛星キャッシュにCloud Storageを追加した。世代番号による条件付き更新で、2地域・複数revisionからの重複取得を防ぐ。壊れたキャッシュ、保存失敗、非200後は自動取得を止める。
 
 取得元の比較・利用条件・設定方法は[DATA_SOURCES.md](DATA_SOURCES.md)にまとめた。God's Eye Viewの車は道路上のシミュレーションであり、個々の実車の位置データとして移植していない。
 
@@ -20,23 +22,24 @@
 | チェック | 結果・範囲 |
 | --- | --- |
 | TypeScript | `npm run lint`成功 |
-| 単体・API | 全体57件成功。その後、周辺の雲境界に関する回帰テストを1件追加し、雲の数学テスト3件も成功 |
+| 単体・API | 最終コードで全体64件・21ファイル成功。輪郭の球面深度、Cloud Storageの世代条件・並行取得・破損キャッシュも含む |
 | ブラウザー全体 | デスクトップ1440×900・モバイル390×844で19件成功、端末条件に該当しない3件スキップ |
 | 最後の雲境界修正 | デスクトップ・モバイルの雲シェーダー描画2件を再実行して成功 |
+| 夜側の輪郭 | デスクトップ・モバイルの夜側描画・近距離フェード2件成功。シェーダーエラーなし |
 | 本番ビルド | クライアントとNodeサーバーをビルドできた |
 | Linuxコンテナ | Dockerビルド、`node`ユーザーでの起動、API・静的ページのHTTP 200、CSPを確認。永続キャッシュ未設定時に本番の衛星取得を止めることも確認 |
 | 実データの通し確認 | 実際のブラウザー→Node→各取得元→画面表示を確認。航空機119件（飛行中102件）、衛星300個表示・軌道要素16,693件、GFS9地点、船舶674件、カメラ812地点。ISSの実要素epochも確認。件数は時点によって変わる |
 | キー | ブラウザーからのPOST、非保存、期限切れ、ユーザー間分離、切断時のキャンセル、再接続後も429待機が継続することをテスト。有効な利用者キーの実接続は未実施 |
 | 依存関係監査 | `npm audit`は既存の15件（moderate 7、high 5、critical 3）を報告。初回`npm ci`時点にも同件数が存在し、この作業で依存関係全体の更新は行っていない |
 
-最後のドキュメントコミット後にも`npm run check`（型・全単体/API・本番ビルド）を実行する。
+追加のCloud Storageコード後に型・全単体/API・本番ビルドを実行して成功した。最終PRもGitHub Actionsで型・単体/API・本番ビルド・ブラウザー・コンテナの全体チェックを実行する。
 
 ## 残る確認・運用条件
 
 - AISStreamと有料ADS-B Exchangeの実接続には利用者のキー・必要な契約が必要。設定保存と接続成功を区別する。
 - 雲高度はGFS予報の気圧面高度、衛星位置は軌道予測。完全なライブ観測ではない。無料の船舶・カメラは地域限定。
 - 利用者環境のGPU・Ultra画質で、すべてのちらつきが消えたという手動確認は未実施。特定した雲フラッシュと深度・周辺境界の不具合は修正し、ブラウザーで描画確認した。
-- 本番の衛星取得には永続ストレージ上の`ORBIT_CACHE_PATH`が必要。現行Cloud Run設定へ永続ボリュームを追加・デプロイしていない。
+- 本番衛星取得には永続ストレージまたはCloud Storageの`ORBIT_CACHE_PATH`が必要。既存プロジェクトに非公開の専用バケットを作成し、2地域で共通オブジェクトを使用する設定を追加した。公開APIでの取得確認結果はPR #22へ記録する。
 - 既存の依存関係監査の指摘は残る。外部APIの可用性・網羅性・将来の無料枠は保証しない。
 
 ## コミット列
@@ -66,5 +69,11 @@
 | `dd12911` | fix: identify demo status as simulation | デモをライブと表示しない |
 | `17b924c` | test: cover live controls credentials and public contact picking | デスクトップ・モバイルの操作回帰確認 |
 | `1a9ad33` | fix: include perspective shift in peripheral cloud bounds | 画面周辺の雲の描画切れを防ぐ |
+| `d9a7e08` | docs: explain live sources setup validation and delivery | 調査・設定・検証範囲の記録 |
+| `12f6bca` | build: bundle public domain geographic outlines | 出典を固定した輪郭データを同梱 |
+| `395026d` | fix: reveal geography on the unlit satellite globe | 夜側の輪郭・昼側と近距離のフェード |
+| `9d2972e` | build: add authenticated Cloud Storage cache support | 既存サービスIDでのGoogle Cloud認証 |
+| `311f4e7` | fix: coordinate durable orbital refresh across deployments | 共有世代条件・破損停止・メモリー保持 |
+| `07f605c` | build: configure persistent Cloud Run orbital storage | 本番の共有キャッシュ設定 |
 
-この報告書・調査ガイド・README・変更履歴は、別のドキュメントコミットで保存する。
+この追加報告・運用設定の説明は、別のドキュメントコミットで保存する。全SHAは[PRのコミット一覧](https://github.com/lingmulongtai/AeroGrid-3D/pull/22/commits)でも確認できる。
