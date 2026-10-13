@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { MessageKey, Translator } from '../i18n';
 import { QUALITY_PRESETS, type QualityPreset, type QualitySettings } from '../types/quality';
 import type { EngineStats } from './Map';
+import { DataSettings } from './DataSettings';
 
 interface SettingsDialogProps {
   quality: QualitySettings;
@@ -10,11 +11,12 @@ interface SettingsDialogProps {
   onClose: () => void;
   readStats: () => EngineStats | null;
   t: Translator;
+  onDataChange: () => void;
 }
 
 const PRESETS: QualityPreset[] = ['low', 'medium', 'high', 'ultra'];
 
-export function SettingsDialog({ quality, onChange, onClose, readStats, t }: SettingsDialogProps) {
+export function SettingsDialog({ quality, onChange, onClose, readStats, t, onDataChange }: SettingsDialogProps) {
   const [stats, setStats] = useState<EngineStats | null>(() => readStats());
 
   useEffect(() => {
@@ -92,6 +94,7 @@ export function SettingsDialog({ quality, onChange, onClose, readStats, t }: Set
           <Slider label={t('settings.weatherParticles')} value={quality.weatherParticles} min={1000} max={40000} step={1000} onChange={(weatherParticles) => update({ weatherParticles })} />
         </section>
 
+        <DataSettings onChange={onDataChange} t={t} />
         <section className="settings-stats" aria-live="polite">
           <Gauge aria-hidden="true" />
           {stats ? (
