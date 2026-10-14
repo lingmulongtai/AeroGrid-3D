@@ -121,21 +121,23 @@ test('live ships and public cameras can be picked on the globe', async ({ page, 
   await page.route('**/api/v1/flights?**', (route) => route.fulfill({ json: { ...snapshot('adsb.lol', []), status: 'unavailable' } }));
   await page.route('**/api/v1/weather**', (route) => route.fulfill({ json: { ...snapshot('rainviewer', []), status: 'unavailable' } }));
   await page.route('**/api/v1/ships?**', (route) => route.fulfill({ json: snapshot('fintraffic', [{ id: '230123456', name: 'Public AIS vessel', longitude: 25, latitude: 60, heading: 90, speedKnots: 8, receivedAt: now, source: 'fintraffic' }]) }));
-  await page.route('**/api/v1/cameras', (route) => route.fulfill({ json: snapshot('fintraffic', [{ id: 'C01503', name: 'Public weather camera', longitude: 25.5, latitude: 60, imageUrl: 'https://weathercam.digitraffic.fi/C0150301.jpg', pageUrl: 'https://liikennetilanne.fintraffic.fi/', source: 'fintraffic' }]) }));
+  await page.route('**/api/v1/cameras?**', (route) => route.fulfill({ json: snapshot('fintraffic', [{ id: 'C01503', name: 'Public weather camera', longitude: 25.5, latitude: 60, imageUrl: 'https://weathercam.digitraffic.fi/C0150301.jpg', pageUrl: 'https://liikennetilanne.fintraffic.fi/', source: 'fintraffic' }]) }));
   await page.route('https://weathercam.digitraffic.fi/**', (route) => route.fulfill({ status: 503 }));
   await page.goto('/');
   await page.getByRole('button', { name: /Live Beta/ }).click();
   if (isMobile) await page.getByRole('button', { name: 'Expand panel' }).click();
   await page.getByRole('button', { name: /^Ships / }).click();
   await page.getByRole('button', { name: /^Public cameras / }).click();
-  if (isMobile) await page.getByRole('button', { name: 'Collapse panel' }).click();
-  await expect.poll(() => page.evaluate(() => (window as any).__globe.publicContacts.shipRecords.length)).toBe(1);
   await page.evaluate(() => {
     const globe = (window as any).__globe;
     const lat = Math.PI / 3, lon = 25 * Math.PI / 180;
     globe.controls.rig.target.set(Math.cos(lat) * Math.sin(lon), Math.sin(lat), Math.cos(lat) * Math.cos(lon));
     globe.controls.rig.range = 200; globe.controls.rig.tilt = 35; globe.controls.applyRig();
+    globe.callbacks.onCameraSettled(globe.controls.snapshot());
   });
+  await page.getByRole('button', { name: 'Load this area' }).click();
+  if (isMobile) await page.getByRole('button', { name: 'Collapse panel' }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__globe.publicContacts.shipRecords.length)).toBe(1);
   const pick = async (kind: 'ship' | 'camera', id: string) => {
     const point = await page.evaluate(({ kind, id }) => {
       const globe = (window as any).__globe;
@@ -151,6 +153,75 @@ test('live ships and public cameras can be picked on the globe', async ({ page, 
   await pick('camera', 'C01503');
   await expect(page.getByRole('complementary', { name: 'Public weather camera' })).toContainText('Image unavailable');
   await expect(page.getByRole('link', { name: 'Open original source' })).toHaveAttribute('href', 'https://liikennetilanne.fintraffic.fi/');
+});
+
+test('outside Fintraffic coverage skips regional requests and retains user streams', async ({ page, isMobile }) => {
+  let regionalRequests = 0;
+  await page.addInitScript(() => localStorage.setItem('aerogrid.publicStreams', JSON.stringify([{
+    id: 'youtube-dQw4w9WgXcQ', videoId: 'dQw4w9WgXcQ', name: 'Tokyo public stream',
+    latitude: 35.68, longitude: 139.76, source: 'youtube', imageUrl: '',
+    pageUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+  }])));
+  for (const endpoint of ['ships', 'cameras']) {
+    await page.route(`**/api/v1/${endpoint}**`, (route) => { regionalRequests++; return route.abort(); });
+  }
+  await page.route('**/api/v1/flights?**', (route) => route.fulfill({ json: {
+    mode: 'live-beta', source: 'adsb.lol', status: 'available', generatedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    coverage: { kind: 'radius', center: { latitude: 35.7, longitude: 139.8 }, radiusNm: 155 }, items: [],
+  } }));
+  await page.route('**/api/v1/weather**', (route) => route.fulfill({ json: {
+    mode: 'live-beta', source: 'rainviewer', status: 'unavailable', generatedAt: new Date().toISOString(),
+    expiresAt: new Date().toISOString(), coverage: { kind: 'global' }, items: [],
+  } }));
+  await page.goto('/');
+  await page.getByRole('button', { name: /Live Beta/ }).click();
+  if (isMobile) await page.getByRole('button', { name: 'Expand panel' }).click();
+  await page.getByRole('button', { name: /^Ships / }).click();
+  await page.getByRole('button', { name: /^Public cameras / }).click();
+  await expect(page.getByRole('button', { name: /^Ships / })).toContainText('Outside coverage');
+  await expect(page.getByRole('button', { name: /^Public cameras / })).toContainText('Outside coverage · YouTube 1');
+  await expect.poll(() => page.evaluate(() => (window as any).__globe.publicContacts.cameraRecords.map((camera: any) => camera.id))).toEqual(['youtube-dQw4w9WgXcQ']);
+  await expect(page.locator('.atlas-footer')).toContainText('155');
+  await page.getByRole('button', { name: '日本語' }).click();
+  await expect(page.getByRole('button', { name: /^船舶 / })).toContainText('対象範囲外');
+  expect(regionalRequests).toBe(0);
+  await expectHealthyPage(page);
+});
+
+test('idle aircraft pause stays visible and resumes from the header', async ({ page, isMobile }, testInfo) => {
+  await page.clock.install();
+  let flightRequests = 0;
+  for (const endpoint of ['flights', 'weather']) {
+    await page.route(`**/api/v1/${endpoint}**`, (route) => {
+      if (endpoint === 'flights') flightRequests++;
+      return route.fulfill({ json: { mode: 'live-beta', source: endpoint === 'flights' ? 'adsb.lol' : 'rainviewer', status: 'available', generatedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), coverage: { kind: 'global' }, items: [] } });
+    });
+  }
+  await page.goto('/');
+  await page.getByRole('button', { name: /Live Beta/ }).click();
+  await expect.poll(() => flightRequests).toBe(1);
+  // A suspended-clock jump fires each due timer once, avoiding 54,000 rendered frames.
+  await page.clock.fastForward(15 * 60_000 + 1);
+  await expect(page.getByRole('status')).toHaveText('Auto refresh pausedResume');
+  await expect(page.locator('.atlas-app')).toHaveAttribute('data-live-paused', 'true');
+  const header = await page.locator('.source-status').boundingBox();
+  const search = await page.locator('.atlas-search').boundingBox();
+  if (isMobile) {
+    expect(search!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
+    const sidebar = await page.locator('.atlas-sidebar').boundingBox();
+    expect(header!.x).toBeGreaterThanOrEqual(sidebar!.x + sidebar!.width);
+  } else {
+    expect(header!.x).toBeGreaterThanOrEqual(search!.x + search!.width);
+  }
+  await expectHealthyPage(page);
+  await page.screenshot({ path: testInfo.outputPath('idle-aircraft-pause.png') });
+  const beforeResume = flightRequests;
+  // Pointer movement itself resumes; dispatch the click to exercise the button independently.
+  await page.getByRole('button', { name: 'Resume', exact: true }).dispatchEvent('click');
+  await expect(page.locator('.atlas-app')).toHaveAttribute('data-live-paused', 'false');
+  await expect.poll(() => flightRequests).toBe(beforeResume + 1);
+  await expect(page.getByRole('status')).toHaveCount(0);
 });
 
 test('Demo stays separate and supports the primary exploration flow', async ({ page }) => {

@@ -43,12 +43,12 @@ function initialHealth(source: string): SourceHealth {
   return { status: 'unavailable', source, updatedAt: null, message: 'Waiting for first request' };
 }
 
+function normalizeFlightQuery(query: FlightQuery): FlightQuery {
+  return { latitude: Math.round(query.latitude * 10) / 10, longitude: Math.round(query.longitude * 10) / 10, radiusNm: Math.ceil(query.radiusNm / 5) * 5 };
+}
+
 function flightCacheKey(query: FlightQuery): string {
-  return [
-    query.latitude.toFixed(2),
-    query.longitude.toFixed(2),
-    Math.round(query.radiusNm),
-  ].join(':');
+  return [query.latitude, query.longitude, query.radiusNm].join(':');
 }
 
 function statusFromError(error: unknown): SourceStatus {
@@ -82,6 +82,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
   let flightProviderBlockedUntil = 0;
 
   async function getFlights(query: FlightQuery): Promise<DataSnapshot<FlightRecord>> {
+    query = normalizeFlightQuery(query);
     const key = flightCacheKey(query);
     const existingRequest = inFlightRequests.get(key);
     if (existingRequest) return existingRequest;

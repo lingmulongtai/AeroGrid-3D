@@ -9,6 +9,8 @@ interface AtlasHeaderProps {
   loading: boolean;
   locale: Locale;
   t: Translator;
+  autoRefreshPaused: boolean;
+  onResume: () => void;
 }
 
 const STATUS_KEYS: Record<SourceStatus, MessageKey> = {
@@ -19,20 +21,28 @@ const STATUS_KEYS: Record<SourceStatus, MessageKey> = {
 };
 
 /** Data-freshness status pill pinned to the top-right corner. */
-export function AtlasHeader({ mode, snapshot, count, loading, locale, t }: AtlasHeaderProps) {
+export function AtlasHeader({ mode, snapshot, count, loading, locale, t, autoRefreshPaused, onResume }: AtlasHeaderProps) {
   const updated = new Intl.DateTimeFormat(locale === 'ja' ? 'ja-JP' : 'en-US', {
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC',
   }).format(new Date(snapshot.generatedAt));
 
   return (
     <header className="source-status" data-status={snapshot.status}>
-      <span className="mode-badge">{mode === 'demo' ? t('mode.demo') : t('mode.live')}</span>
-      <span className="status-indicator" aria-hidden="true" />
-      <span className="status-label">{mode === 'demo' ? t('mode.demo') : t(STATUS_KEYS[snapshot.status])}</span>
-      <span className="status-divider" />
-      <span className="status-count"><Radio aria-hidden="true" /> {count.toLocaleString(locale)} </span>
-      <span className="status-time">{t('status.updated', { value: `${updated} UTC` })}</span>
-      {loading && <LoaderCircle className="status-spinner" aria-label={t('status.loading')} />}
+      <div className="source-status-summary">
+        <span className="mode-badge">{mode === 'demo' ? t('mode.demo') : t('mode.live')}</span>
+        <span className="status-indicator" aria-hidden="true" />
+        <span className="status-label">{mode === 'demo' ? t('mode.demo') : t(STATUS_KEYS[snapshot.status])}</span>
+        <span className="status-divider" />
+        <span className="status-count"><Radio aria-hidden="true" /> {count.toLocaleString(locale)} </span>
+        <span className="status-time">{t('status.updated', { value: `${updated} UTC` })}</span>
+        {loading && <LoaderCircle className="status-spinner" aria-label={t('status.loading')} />}
+      </div>
+      {mode === 'live-beta' && autoRefreshPaused && (
+        <span className="auto-refresh-pause" role="status">
+          <span>{t('status.autoRefreshPaused')}</span>
+          <button type="button" onClick={onResume}>{t('status.resume')}</button>
+        </span>
+      )}
     </header>
   );
 }

@@ -149,14 +149,18 @@ export function createApp({ dataService, staticDir, logger, publicLayers = new P
       res.send(payload.body);
     }).catch(next);
   });
-  app.get('/api/v1/cameras', async (_req, res) => { res.json(await publicLayers.cameras()); });
+  app.get('/api/v1/cameras', async (req, res) => {
+    const query = area(req);
+    if (!query) return res.status(400).json({ message: 'Valid lat, lon and radius_nm (1–250) required' });
+    res.json(await publicLayers.cameras(query));
+  });
   app.get('/api/v1/ships', async (req, res) => {
     const query = area(req);
     if (!query) return res.status(400).json({ message: 'Valid lat, lon and radius_nm (1–250) required' });
     const token = connectionToken(req);
     const session = token ? connections.get(token) : undefined;
     if (token && !session) return res.status(401).json({ message: 'Connection expired; reconnect in settings' });
-    res.json(session?.preferences.shipSource === 'aisstream' ? connections.ships(session, query) : await publicLayers.ships());
+    res.json(session?.preferences.shipSource === 'aisstream' ? connections.ships(session, query) : await publicLayers.ships(query));
   });
 
   if (staticDir && fs.existsSync(staticDir)) {
