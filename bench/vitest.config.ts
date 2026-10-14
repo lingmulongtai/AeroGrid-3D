@@ -18,4 +18,4 @@ const oldLayer = execFileSync('git', ['show', `${base}:src/globe/layers/satellit
 writeFileSync(new URL('baseline-data.ts', cache), oldData);
 writeFileSync(new URL('baseline-layer.ts', cache), oldLayer);
 
-export default defineConfig({ test: { environment: 'node', include: ['bench/satellites.bench.ts'], fileParallelism: false, testTimeout: 180_000 } });
+export default defineConfig({ test: { environment: 'node', include: ['bench/satellites.bench.ts'], fileParallelism: false, testTimeout: 600_000 } });

@@ -33,10 +33,11 @@ test('satellite frame cost: main vs working tree', async () => {
         const layer = baseline ? new BaselineLayer() : new SatelliteLayer();
         layer.setConstellation(records); layer.showTrails = !scenario.endsWith('OFF');
         let frame = 0;
-        // Two seconds warms the renderer/caches and crosses staggered keyframe deadlines.
-        for (; frame < 120; frame++) layer.update(catalog.time + frame * 16, sidereal + frame * 0.016 * 7.2921159e-5, camera, origin, pixelsPerRadian);
+        // Seven seconds includes the bounded progressive history fill, so both
+        // renderers are measured with complete trails and the same time window.
+        for (; frame < 420; frame++) layer.update(catalog.time + frame * 16, sidereal + frame * 0.016 * 7.2921159e-5, camera, origin, pixelsPerRadian);
         const started = performance.now();
-        for (; frame < 180; frame++) layer.update(catalog.time + frame * 16, sidereal + frame * 0.016 * 7.2921159e-5, camera, origin, pixelsPerRadian);
+        for (; frame < 480; frame++) layer.update(catalog.time + frame * 16, sidereal + frame * 0.016 * 7.2921159e-5, camera, origin, pixelsPerRadian);
         durations.push((performance.now() - started) / 60);
         layer.dispose();
       }
@@ -44,5 +45,9 @@ test('satellite frame cost: main vs working tree', async () => {
     }
   }
   console.table(rows);
-  await writeFile(new URL('../.cache/satellite-bench/results.json', import.meta.url), JSON.stringify({ data: catalog.kind, start: catalog.time, rows }, null, 2));
+  await writeFile(new URL('../.cache/satellite-bench/results.json', import.meta.url), JSON.stringify({
+    baselineCommit: '643e0e375cf7bb834458b0da7410fd674ad04daa', node: process.version,
+    warmupFrames: 420, measuredFrames: 60, stepMs: 16, cameraAltitudeKm: 18_000,
+    data: catalog.kind, start: catalog.time, rows,
+  }, null, 2));
 });
