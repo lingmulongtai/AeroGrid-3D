@@ -34,12 +34,13 @@ position. Clock rollback holds the last frame; a pause of one second or more
 reinitializes anchors immediately to avoid stale extrapolation.
 
 Each recent trail has a double-precision world-coordinate ring on an absolute
-time grid, with the next grid point prepared early. Exact history computation is
-limited to ceil(N/24) samples per frame. Initial trails extend over approximately
-five to six seconds as their history fills, while models are positioned
+time grid, with the next grid point prepared early. Live history computation is
+limited to ceil(N/24) samples per frame. Initial live trails extend over approximately
+five to six seconds at 60 fps as their history fills, while models are positioned
 immediately. The same bounded fill applies after a long pause or re-enabling old
-trails. Geometry is written relative to the current floating origin from cached
-world points, with its head attached to the interpolated model every frame.
+live trails. Analytic demo history is prepared fully on its first display, with
+no progressive fill. Geometry is written relative to the current floating origin
+from cached world points, with its head attached to the interpolated model every frame.
 Selected orbit geometry refreshes every ten seconds or on a selection change;
 only its head and origin translation change in between.
 
@@ -66,11 +67,11 @@ of timing. Values are mean milliseconds per frame, before → after.
 
 | Satellites | Demo, trails on | Live, trails off | Live, trails on |
 | ---: | ---: | ---: | ---: |
-| 300 | 2.024 → 0.423 | 6.847 → 0.452 | 16.993 → 0.501 |
-| 1200 | 10.509 → 4.377 | 26.411 → 2.256 | 74.185 → 2.316 |
-| 2400 | 19.208 → 7.633 | 45.742 → 2.351 | 144.094 → 7.529 |
-| 4200 | 36.710 → 9.181 | 96.576 → 5.888 | 328.999 → 11.860 |
+| 300 | 1.200 → 0.447 | 5.554 → 0.285 | 27.495 → 0.654 |
+| 1200 | 10.373 → 2.976 | 23.152 → 1.243 | 36.584 → 3.706 |
+| 2400 | 8.893 → 4.346 | 22.173 → 1.274 | 65.862 → 2.733 |
+| 4200 | 16.595 → 5.469 | 78.386 → 5.419 | 191.953 → 18.367 |
 
-Live with trails improves by 33.91× / 32.04× / 19.14× / 27.74× respectively,
+Live with trails improves by 42.07× / 9.87× / 24.10× / 10.45× respectively,
 exceeding the 5× target in all four populations. The full JSON, catalog and
 extracted baseline remain local and ignored.
