@@ -5,6 +5,7 @@ import { fetchFintrafficShips, fetchPublicCameras } from '../providers/fintraffi
 import { OrbitProvider } from '../providers/orbits.js';
 import type { FlightQuery } from './atlasData.js';
 import { DailyQuota } from '../lib/quota.js';
+import { areaIntersectsBounds, FINTRAFFIC_CAMERA_BOUNDS, FINTRAFFIC_SHIP_BOUNDS, greatCircleKm, type GeoBounds } from '../../shared/geography.js';
 
 export class PublicLayers {
   readonly orbits = new OrbitProvider();
@@ -24,8 +25,23 @@ export class PublicLayers {
       return fetchCloudProfiles(normalized, this.fetchFn, this.now());
     });
   }
-  ships() { return this.get<ShipRecord>('ships', 'fintraffic', { kind: 'region', name: 'Finnish waterways / Baltic receiver coverage' }, 60_000, () => fetchFintrafficShips(this.fetchFn, this.now()), 'Class A, no fishing vessels'); }
-  cameras() { return this.get<PublicCamera>('cameras', 'fintraffic', { kind: 'region', name: 'Finland' }, 60 * 60_000, () => fetchPublicCameras(this.fetchFn), 'Official weather cameras; still images, roughly 10-minute updates'); }
+  ships(query: FlightQuery) {
+    const message = 'Finnish waterways / Baltic receiver coverage; Class A, no fishing vessels';
+    return this.regional(query, FINTRAFFIC_SHIP_BOUNDS, message, () => this.get<ShipRecord>('ships', 'fintraffic', { kind: 'region', name: 'Finnish waterways / Baltic receiver coverage' }, 60_000, () => fetchFintrafficShips(this.fetchFn, this.now())));
+  }
+  cameras(query: FlightQuery) {
+    const message = 'Finland road weather cameras; still images, roughly 10-minute updates';
+    return this.regional(query, FINTRAFFIC_CAMERA_BOUNDS, message, () => this.get<PublicCamera>('cameras', 'fintraffic', { kind: 'region', name: 'Finland' }, 60 * 60_000, () => fetchPublicCameras(this.fetchFn)));
+  }
+  private async regional<T extends { latitude: number; longitude: number }>(query: FlightQuery, bounds: GeoBounds, message: string, read: () => Promise<DataSnapshot<T>>): Promise<DataSnapshot<T>> {
+    const coverage: DataCoverage = { kind: 'radius', center: { latitude: query.latitude, longitude: query.longitude }, radiusNm: query.radiusNm };
+    if (!areaIntersectsBounds(query, bounds)) {
+      const time = new Date(this.now()).toISOString();
+      return { mode: 'live-beta', source: 'fintraffic', status: 'available', reason: 'outside-coverage', generatedAt: time, expiresAt: time, coverage, items: [], message: `Outside coverage: ${message}` };
+    }
+    const snapshot = await read();
+    return { ...snapshot, coverage, items: snapshot.items.filter((item) => greatCircleKm(query, item) <= query.radiusNm * 1.852), message: snapshot.message ? `${message}; ${snapshot.message}` : message };
+  }
   private async get<T>(key: string, source: string, coverage: DataCoverage, ttl: number, load: () => Promise<T[]>, message?: string): Promise<DataSnapshot<T>> {
     const cached = this.cache.get(key);
     if (cached && Date.parse(cached.expiresAt) > this.now()) return cached;

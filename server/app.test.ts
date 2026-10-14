@@ -5,6 +5,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { AtlasStatus, DataSnapshot, FlightRecord, WeatherFrame } from '../shared/contracts';
 import type { AtlasDataService } from './services/atlasData';
+import { PublicLayers } from './services/publicLayers';
 import { createApp } from './app';
 
 function serviceStub(): AtlasDataService {
@@ -34,6 +35,22 @@ function serviceStub(): AtlasDataService {
 }
 
 describe('AeroGrid REST API', () => {
+  it('requires regional camera coverage and skips Fintraffic upstream requests outside its bounds', async () => {
+    const upstream = vi.fn();
+    const app = createApp({ dataService: serviceStub(), publicLayers: new PublicLayers(upstream) });
+    for (const endpoint of ['ships', 'cameras']) {
+      await request(app).get(`/api/v1/${endpoint}`).expect(400);
+      await request(app).get(`/api/v1/${endpoint}?lat=60&lon=25&radius_nm=251`).expect(400);
+      const response = await request(app).get(`/api/v1/${endpoint}?lat=35.68&lon=139.76&radius_nm=150`).expect(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toMatchObject({
+        status: 'available', reason: 'outside-coverage', items: [],
+        coverage: { kind: 'radius', center: { latitude: 35.68, longitude: 139.76 }, radiusNm: 150 },
+      });
+    }
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
   it('negotiates gzip and brotli for API JSON without changing cache or security headers', async () => {
     const service = serviceStub();
     vi.mocked(service.getStatus).mockReturnValue({ ...service.getStatus(), description: 'compressible JSON '.repeat(300) } as AtlasStatus);
