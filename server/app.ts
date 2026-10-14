@@ -25,7 +25,7 @@ export function createApp({ dataService, staticDir, logger, publicLayers = new P
   const satellitePayload = new SatellitePayload(publicLayers.orbits);
   app.disable('x-powered-by');
   // MIME filtering compresses JSON/JS/CSS/SVG while leaving raster images alone.
-  app.use(compression({ filter: (req, res) => req.path !== '/api/v1/satellites' && compression.filter(req, res) }));
+  app.use(compression({ filter: (req, res) => !res.locals.satellitePayload && compression.filter(req, res) }));
   app.use((_req, res, next) => {
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
@@ -129,6 +129,7 @@ export function createApp({ dataService, staticDir, logger, publicLayers = new P
     res.json(await publicLayers.clouds(query));
   });
   app.get('/api/v1/satellites', (req, res, next) => {
+    res.locals.satellitePayload = true;
     const value = req.query.limit ?? '1200';
     if (typeof value !== 'string' || !/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 5000) {
       return res.status(400).json({ code: 'INVALID_LIMIT', message: 'limit must be an integer between 1 and 5000 (default 1200)' });

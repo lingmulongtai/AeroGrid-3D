@@ -91,6 +91,21 @@ describe('satellite payload API', () => {
     expect(response.headers['cache-control']).toBe('no-store');
     expect(response.headers.etag).toBeUndefined();
     expect(response.body.items).toEqual([]);
+    const compressed = await request(app).get('/api/v1/satellites?limit=300').set('Accept-Encoding', 'gzip, identity;q=0').expect(200);
+    expect(compressed.headers['content-encoding']).toBe('gzip');
+    expect(compressed.headers['cache-control']).toBe('no-store');
+    expect(compressed.headers.etag).toBeUndefined();
+    expect(compressed.body.items).toEqual([]);
+  });
+
+  it('keeps encoding validators intact on case-insensitive and trailing-slash routes', async () => {
+    const { app } = setup();
+    const identity = await request(app).get('/api/v1/satellites?limit=300').set('Accept-Encoding', 'identity').expect(200);
+    const alternate = await request(app).get('/API/v1/SATELLITES/?limit=300').set('Accept-Encoding', 'deflate').expect(200);
+    expect(alternate.headers['content-encoding']).toBeUndefined();
+    expect(alternate.headers.etag).toBe(identity.headers.etag);
+    expect(alternate.body).toEqual(identity.body);
+    await request(app).get('/api/v1/satellites?limit=300').set('Accept-Encoding', 'gzip;q=0, br;q=0, identity;q=0').expect(406);
   });
 
   it('memoizes selection, serialization and compressed bytes per generation and limit', async () => {
