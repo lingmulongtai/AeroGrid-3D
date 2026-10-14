@@ -101,6 +101,7 @@ export class GlobeEngine {
   private lastCelestial = 0;
   private timer = new Timer();
   private frameTime = Date.now();
+  private frameSidereal = siderealAngle(new Date(this.frameTime));
   private frame = 0;
   private animation = 0;
   private resizeObserver: ResizeObserver;
@@ -330,7 +331,7 @@ export class GlobeEngine {
       this.controls.setFollow(getter, { range, tilt: 68, chase: true });
     } else if (target.kind === 'satellite') {
       const getter = (): FollowTarget | null => {
-        const position = this.satellites.positionAt(target.id, this.frameTime, siderealAngle(new Date(this.frameTime)));
+        const position = this.satellites.positionAt(target.id, this.frameTime, this.frameSidereal);
         if (!position) return null;
         const { longitude, latitude, altitudeKm } = vectorToLonLat(position);
         return { longitude, latitude, altitude: altitudeKm };
@@ -375,7 +376,7 @@ export class GlobeEngine {
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     let best: { result: PickResult; score: number } | null = null;
-    const consider = (positions: Float32Array, ids: string[], kind: 'aircraft' | 'satellite', weight: number) => {
+    const consider = (positions: ArrayLike<number>, ids: string[], kind: 'aircraft' | 'satellite', weight: number) => {
       const point = new Vector3();
       for (let i = 0; i < ids.length; i++) {
         point.set(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
@@ -446,9 +447,12 @@ export class GlobeEngine {
     this.animation = requestAnimationFrame(this.tick);
     this.timer.update(timestamp);
     const delta = this.timer.getDelta();
-    const now = Date.now();
+    const now = Math.max(Date.now(), this.frameTime);
     this.frameTime = now;
     this.frame++;
+
+    const sidereal = this.frameSidereal = siderealAngle(new Date(now));
+    if (this.satellites.visible) this.satellites.prepareFrame(now, sidereal);
 
     const moved = this.controls.update(delta);
     const interacting = this.controls.isInteracting;
@@ -474,7 +478,6 @@ export class GlobeEngine {
     const devicePixelsPerRadian = cssPixelsPerRadian * this.pixelRatio;
 
     this.earth.update(camera, this.frame, this.height * this.pixelRatio);
-    const sidereal = siderealAngle(new Date(now));
     this.aircraft.update(now, camera, this.origin, cssPixelsPerRadian);
     this.satellites.update(now, sidereal, camera, this.origin, cssPixelsPerRadian);
     this.weather.update(performance.now() / 1000, devicePixelsPerRadian, camera, this.renderer.getDrawingBufferSize(new Vector2()));

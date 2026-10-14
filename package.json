@@ -17,6 +17,7 @@
     "clean": "node -e \"for(const path of ['dist','server-dist'])require('fs').rmSync(path,{recursive:true,force:true})\"",
     "lint": "tsc --noEmit",
     "test": "vitest run",
+    "bench:satellites": "vitest run --config bench/vitest.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",

@@ -15,7 +15,9 @@ import {
 } from 'three';
 import {
   SATELLITE_COLORS,
-  satelliteWorldPosition,
+  satelliteFrame,
+  sampleSatelliteWorldPosition,
+  type SatelliteFrame,
   type SatelliteModelKind,
   type SatelliteRecord,
 } from '../../data/satellites';
@@ -23,8 +25,9 @@ import { EARTH_RADIUS_KM } from '../geo';
 import { createLiveryMaterial } from '../materials';
 import { createSatelliteGeometries, MODEL_LENGTH_M } from '../models';
 
-const EARTH_ROTATION_RAD_S = 7.2921159e-5;
 const TRAIL_POINTS = 14;
+export const SATELLITE_KEYFRAME_MS = 1000;
+const ORBIT_REFRESH_MS = 10_000;
 const SELECTED_COLOR = new Color(1.2, 1.2, 1.15);
 const TARGET_PIXELS: Record<SatelliteModelKind, number> = { station: 20, satellite: 11, starlink: 6.5 };
 const MODEL_LENGTH: Record<SatelliteModelKind, number> = {
@@ -38,8 +41,21 @@ const scaleVector = new Vector3();
 const xAxis = new Vector3();
 const yAxis = new Vector3();
 const zAxis = new Vector3();
-const p1 = { x: 0, y: 0, z: 0 };
-const p2 = { x: 0, y: 0, z: 0 };
+const sample = new Vector3();
+
+interface CachedSatellite {
+  record: SatelliteRecord;
+  position: Vector3;
+  from: Vector3;
+  to: Vector3;
+  start: number;
+  end: number;
+  trail?: { step: number; points: Float64Array; ticks: Float64Array; offset: number };
+}
+
+function ringSlot(tick: number) {
+  return ((tick % TRAIL_POINTS) + TRAIL_POINTS) % TRAIL_POINTS;
+}
 
 function trailSeconds(record: SatelliteRecord) {
   if (record.altitudeKm > 30_000) return 0;
@@ -52,18 +68,23 @@ export class SatelliteLayer {
   private meshes: Record<SatelliteModelKind, InstancedMesh>;
   private geometries = createSatelliteGeometries();
   private records: SatelliteRecord[] = [];
+  private constellationSignature = '';
   private colors: Color[] = [];
   private trailGeometry = new BufferGeometry();
   private trails: LineSegments;
   private orbitLine: Line;
   private emissive;
-  private trailFrame = 0;
+  private cached: CachedSatellite[] = [];
+  private entriesById = new Map<string, CachedSatellite>();
+  private frame: SatelliteFrame | null = null;
+  private nextKeyframe = 0;
+  private nextTrail = 0;
+  private trailVertices = 0;
   visible = true;
   showTrails = true;
   selectedId: string | null = null;
-  pickPositions = new Float32Array(0);
+  pickPositions = new Float64Array(0);
   pickIds: string[] = [];
-  private positionsById = new Map<string, Vector3>();
 
   constructor() {
     const { material, emissive } = createLiveryMaterial({ metalness: 0.55, roughness: 0.35, emissive: 0.45 });
@@ -111,7 +132,29 @@ export class SatelliteLayer {
   }
 
   setConstellation(records: SatelliteRecord[]) {
+    const signature = JSON.stringify(records);
+    if (this.records.length && signature === this.constellationSignature) {
+      // Polling returns new objects even while the two-hour OMM cache is unchanged.
+      // Preserve anchors/history, but expose the caller's latest record objects.
+      this.records = records;
+      this.cached.forEach((entry, index) => { entry.record = records[index]; });
+      return;
+    }
+    this.constellationSignature = signature;
     this.records = records;
+    this.frame = null;
+    this.nextKeyframe = this.nextTrail = this.trailVertices = 0;
+    this.entriesById.clear();
+    this.cached = records.map((record) => {
+      const seconds = trailSeconds(record);
+      const entry: CachedSatellite = {
+        record, position: new Vector3(), from: new Vector3(), to: new Vector3(), start: 0, end: 0,
+        trail: seconds ? { step: seconds * 1000 / (TRAIL_POINTS - 1), points: new Float64Array(TRAIL_POINTS * 3), ticks: new Float64Array(TRAIL_POINTS).fill(NaN), offset: this.trailVertices } : undefined,
+      };
+      if (seconds) this.trailVertices += (TRAIL_POINTS - 1) * 2;
+      this.entriesById.set(record.id, entry);
+      return entry;
+    });
     this.colors = records.map((record) => new Color(SATELLITE_COLORS[record.category]).convertSRGBToLinear());
     const counts: Record<SatelliteModelKind, number> = { station: 0, satellite: 0, starlink: 0 };
     for (const record of records) counts[record.model]++;
@@ -133,43 +176,127 @@ export class SatelliteLayer {
     colors.setUsage(DynamicDrawUsage);
     this.trailGeometry.setAttribute('position', positions);
     this.trailGeometry.setAttribute('color', colors);
-    this.pickPositions = new Float32Array(records.length * 3);
+    this.trailGeometry.setDrawRange(0, this.trailVertices);
+    // Fades depend only on the record and segment, not on frame time.
+    this.cached.forEach((entry, index) => {
+      if (!entry.trail) return;
+      const color = this.colors[index];
+      const intensity = entry.record.model === 'starlink' ? 0.28 : entry.record.category === 'station' ? 1.6 : 0.85;
+      for (let k = 0; k < TRAIL_POINTS - 1; k++) {
+        const a = (1 - k / (TRAIL_POINTS - 1)) ** 1.8 * intensity;
+        const b = (1 - (k + 1) / (TRAIL_POINTS - 1)) ** 1.8 * intensity;
+        colors.setXYZ(entry.trail.offset + k * 2, color.r * a, color.g * a, color.b * a);
+        colors.setXYZ(entry.trail.offset + k * 2 + 1, color.r * b, color.g * b, color.b * b);
+      }
+    });
+    this.pickPositions = new Float64Array(records.length * 3);
+    this.pickIds = records.map((record) => record.id);
     this.selectedOrbitId = null;
   }
 
   getWorldPosition(id: string): Vector3 | null {
-    return this.positionsById.get(id) ?? null;
+    return this.frame ? this.entriesById.get(id)?.position ?? null : null;
   }
 
   positionAt(id: string, now: number, sidereal: number): Vector3 | null {
-    const record = this.records.find((candidate) => candidate.id === id);
-    if (!record) return null;
-    satelliteWorldPosition(record, now, sidereal, p2);
-    return new Vector3(p2.x, p2.y, p2.z);
+    this.prepareFrame(now, sidereal);
+    return this.getWorldPosition(id);
+  }
+
+  /** Run before camera follow as well as drawing; all consumers share these positions. */
+  prepareFrame(now: number, sidereal: number) {
+    if (this.frame && now <= this.frame.timeMs) return;
+    const previous = this.frame;
+    this.frame = satelliteFrame(now, sidereal);
+    const count = this.cached.length;
+    if (!previous || now - previous.timeMs >= SATELLITE_KEYFRAME_MS) {
+      // Initialisation/resume is exact immediately. Normal deadlines are evenly
+      // phased over the next second, rather than updating every record together.
+      this.cached.forEach((entry, index) => {
+        entry.end = now + Math.floor(index / Math.max(1, count) * SATELLITE_KEYFRAME_MS);
+        entry.start = entry.end - SATELLITE_KEYFRAME_MS;
+        sampleSatelliteWorldPosition(entry.record, entry.start, this.frame!, entry.from);
+        sampleSatelliteWorldPosition(entry.record, entry.end, this.frame!, entry.to);
+      });
+      this.nextKeyframe = 0;
+    } else {
+      for (let visited = 0; visited < count; visited++) {
+        const entry = this.cached[this.nextKeyframe];
+        if (now <= entry.end) break;
+        entry.start = entry.end;
+        entry.end += SATELLITE_KEYFRAME_MS;
+        entry.from.copy(entry.to);
+        sampleSatelliteWorldPosition(entry.record, entry.end, this.frame, entry.to);
+        this.nextKeyframe = (this.nextKeyframe + 1) % count;
+      }
+    }
+    this.cached.forEach((entry, index) => {
+      entry.position.copy(entry.from).lerp(entry.to, (now - entry.start) / SATELLITE_KEYFRAME_MS);
+      this.pickPositions[index * 3] = entry.position.x;
+      this.pickPositions[index * 3 + 1] = entry.position.y;
+      this.pickPositions[index * 3 + 2] = entry.position.z;
+    });
+  }
+
+  private cacheTrails() {
+    if (!this.frame || !this.cached.length) return;
+    // At most N/24 live history samples per frame, including cold fill. Prepare
+    // the next grid sample early so shared boundaries cannot spike SGP4 work.
+    // Analytic demo history is cheap and fills immediately, preserving its look.
+    let budget = Math.ceil(this.cached.length / 24);
+    for (let visited = 0; visited < this.cached.length && budget; visited++) {
+      const entry = this.cached[this.nextTrail];
+      this.nextTrail = (this.nextTrail + 1) % this.cached.length;
+      const trail = entry.trail;
+      if (!trail) continue;
+      const newest = Math.floor(this.frame.timeMs / trail.step);
+      for (let k = 0; k < TRAIL_POINTS; k++) {
+        const tick = k === TRAIL_POINTS - 1 ? newest + 1 : newest - k;
+        const slot = ringSlot(tick);
+        if (trail.ticks[slot] === tick) continue;
+        sampleSatelliteWorldPosition(entry.record, tick * trail.step, this.frame, sample);
+        trail.points[slot * 3] = sample.x;
+        trail.points[slot * 3 + 1] = sample.y;
+        trail.points[slot * 3 + 2] = sample.z;
+        trail.ticks[slot] = tick;
+        if (entry.record.elements) { budget--; break; }
+      }
+    }
   }
 
   private selectedOrbitId: string | null = null;
+  private orbitSampleTime = -Infinity;
 
-  private updateOrbit(record: SatelliteRecord | undefined, now: number, sidereal: number, origin: Vector3) {
+  private updateOrbit(record: SatelliteRecord | undefined, now: number, origin: Vector3) {
     if (!record || !this.showTrails) {
       this.orbitLine.visible = false;
+      if (!record) this.selectedOrbitId = null;
       return;
     }
     this.orbitLine.visible = true;
-    if (this.selectedOrbitId !== record.id || this.trailFrame % 30 === 0) {
+    if (this.selectedOrbitId !== record.id || now - this.orbitSampleTime >= ORBIT_REFRESH_MS) {
       this.selectedOrbitId = record.id;
+      this.orbitSampleTime = now;
       const samples = 256;
       const points = new Float32Array((samples + 1) * 3);
       const period = record.periodMinutes * 60;
       for (let i = 0; i <= samples; i++) {
         const dt = (i / samples) * period;
-        satelliteWorldPosition(record, now + dt * 1000, sidereal + EARTH_ROTATION_RAD_S * dt, p1);
-        points.set([p1.x - origin.x, p1.y - origin.y, p1.z - origin.z], i * 3);
+        sampleSatelliteWorldPosition(record, now + dt * 1000, this.frame!, sample);
+        points[i * 3] = sample.x - origin.x;
+        points[i * 3 + 1] = sample.y - origin.y;
+        points[i * 3 + 2] = sample.z - origin.z;
       }
       this.orbitLine.geometry.setAttribute('position', new BufferAttribute(points, 3));
       this.orbitLine.geometry.computeBoundingSphere();
       this.orbitOrigin.copy(origin);
     }
+    // Keep the orbit's head attached to the same interpolated position as the
+    // model/camera, without propagating the other 256 vertices again.
+    const position = this.entriesById.get(record.id)!.position;
+    const points = this.orbitLine.geometry.getAttribute('position') as BufferAttribute;
+    points.setXYZ(0, position.x - this.orbitOrigin.x, position.y - this.orbitOrigin.y, position.z - this.orbitOrigin.z);
+    points.needsUpdate = true;
     this.orbitLine.position.copy(this.orbitOrigin).sub(origin);
   }
 
@@ -183,26 +310,18 @@ export class SatelliteLayer {
     }
     this.group.position.copy(origin);
     this.group.updateMatrixWorld(true);
-    this.trailFrame++;
+    this.prepareFrame(now, sidereal);
+    now = this.frame!.timeMs;
     const counters: Record<SatelliteModelKind, number> = { station: 0, satellite: 0, starlink: 0 };
-    this.pickIds = new Array(this.records.length);
-    const updateTrails = this.showTrails && this.trailFrame % 2 === 0;
+    if (this.pickIds.length !== this.records.length) this.pickIds = this.records.map((record) => record.id);
+    if (this.showTrails) this.cacheTrails();
     const trailPositions = this.trailGeometry.getAttribute('position') as BufferAttribute | undefined;
-    const trailColors = this.trailGeometry.getAttribute('color') as BufferAttribute | undefined;
-    let trailVertex = 0;
-
-    this.records.forEach((record, index) => {
-      satelliteWorldPosition(record, now, sidereal, p1);
-      satelliteWorldPosition(record, now + 1000, sidereal + EARTH_ROTATION_RAD_S, p2);
-      this.pickPositions[index * 3] = p1.x;
-      this.pickPositions[index * 3 + 1] = p1.y;
-      this.pickPositions[index * 3 + 2] = p1.z;
-      this.pickIds[index] = record.id;
-      const stored = this.positionsById.get(record.id) ?? new Vector3();
-      this.positionsById.set(record.id, stored.set(p1.x, p1.y, p1.z));
+    this.cached.forEach((entry, index) => {
+      const record = entry.record;
+      const p1 = entry.position;
 
       yAxis.set(p1.x, p1.y, p1.z).normalize();
-      zAxis.set(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+      zAxis.copy(entry.to).sub(entry.from);
       zAxis.addScaledVector(yAxis, -zAxis.dot(yAxis)).normalize();
       if (zAxis.lengthSq() < 0.5) zAxis.set(0, 1, 0).cross(yAxis).normalize();
       xAxis.crossVectors(yAxis, zAxis).normalize();
@@ -219,23 +338,19 @@ export class SatelliteLayer {
       mesh.setMatrixAt(slot, matrix);
       mesh.setColorAt(slot, selected ? SELECTED_COLOR : this.colors[index]);
 
-      if (updateTrails && trailPositions && trailColors) {
-        const seconds = trailSeconds(record);
-        if (seconds === 0) return;
-        const color = this.colors[index];
-        const intensity = record.model === 'starlink' ? 0.28 : record.category === 'station' ? 1.6 : 0.85;
-        let previous: [number, number, number] = [p1.x - origin.x, p1.y - origin.y, p1.z - origin.z];
-        for (let k = 1; k < TRAIL_POINTS; k++) {
-          const dt = (seconds * k) / (TRAIL_POINTS - 1);
-          satelliteWorldPosition(record, now - dt * 1000, sidereal - EARTH_ROTATION_RAD_S * dt, p2);
-          const current: [number, number, number] = [p2.x - origin.x, p2.y - origin.y, p2.z - origin.z];
-          const fadeA = (1 - (k - 1) / (TRAIL_POINTS - 1)) ** 1.8 * intensity;
-          const fadeB = (1 - k / (TRAIL_POINTS - 1)) ** 1.8 * intensity;
-          trailPositions.setXYZ(trailVertex, previous[0], previous[1], previous[2]);
-          trailColors.setXYZ(trailVertex++, color.r * fadeA, color.g * fadeA, color.b * fadeA);
-          trailPositions.setXYZ(trailVertex, current[0], current[1], current[2]);
-          trailColors.setXYZ(trailVertex++, color.r * fadeB, color.g * fadeB, color.b * fadeB);
-          previous = current;
+      if (this.showTrails && trailPositions && entry.trail) {
+        const trail = entry.trail;
+        const newest = Math.floor(now / trail.step);
+        let x = p1.x, y = p1.y, z = p1.z;
+        for (let k = 0; k < TRAIL_POINTS - 1; k++) {
+          const vertex = trail.offset + k * 2;
+          trailPositions.setXYZ(vertex, x - origin.x, y - origin.y, z - origin.z);
+          const tick = newest - k;
+          const slot = ringSlot(tick);
+          if (trail.ticks[slot] === tick) {
+            x = trail.points[slot * 3]; y = trail.points[slot * 3 + 1]; z = trail.points[slot * 3 + 2];
+          }
+          trailPositions.setXYZ(vertex + 1, x - origin.x, y - origin.y, z - origin.z);
         }
       }
     });
@@ -248,22 +363,20 @@ export class SatelliteLayer {
     }
 
     this.trails.visible = this.showTrails;
-    if (updateTrails && trailPositions && trailColors) {
-      this.trailGeometry.setDrawRange(0, trailVertex);
+    if (this.showTrails && trailPositions) {
       trailPositions.needsUpdate = true;
-      trailColors.needsUpdate = true;
       this.trailsOrigin.copy(origin);
     }
     this.trails.position.copy(this.trailsOrigin).sub(origin);
 
     const selected = this.selectedId ? this.records.find((record) => record.id === this.selectedId) : undefined;
-    this.updateOrbit(selected, now, sidereal, origin);
+    this.updateOrbit(selected, now, origin);
   }
 
   private trailsOrigin = new Vector3();
 
   altitudeOf(id: string) {
-    const position = this.positionsById.get(id);
+    const position = this.getWorldPosition(id);
     return position ? position.length() - EARTH_RADIUS_KM : null;
   }
 
