@@ -1,5 +1,5 @@
 import { siderealAngle } from '../globe/astro';
-import { eciToGeodetic, gstime, json2satrec, propagate, type SatRec } from 'satellite.js';
+import { eciToGeodetic, gstime, json2satrec, sgp4, type SatRec } from 'satellite.js';
 import type { OrbitalElements } from '../../shared/live';
 
 // A deterministic, physically plausible demo constellation. Orbits are
@@ -42,6 +42,31 @@ const EARTH_RADIUS_KM = 6371;
 const EPOCH_MS = Date.UTC(2026, 0, 1);
 const DEG = Math.PI / 180;
 const SIDEREAL_DAY_MIN = 1436.0682;
+const DAY_MS = 86_400_000;
+const EARTH_ROTATION_RAD_S = 7.2921159e-5;
+
+export interface SatelliteFrame {
+  timeMs: number;
+  sidereal: number;
+  gmst: number;
+  centuries: number;
+}
+
+/** One GMST evaluation per frame. Demo GAST and live GMST must remain distinct. */
+export function satelliteFrame(timeMs: number, sidereal: number): SatelliteFrame {
+  const jd = timeMs / DAY_MS + 2440587.5;
+  return { timeMs, sidereal, gmst: gstime(jd), centuries: (jd - 2451545) / 36525 };
+}
+
+function sampleGmst(frame: SatelliteFrame, timeMs: number) {
+  // Exact difference of satellite.js's cubic GMST polynomial, including long
+  // selected-orbit samples. No per-satellite Date or gstime calls are needed.
+  const t = frame.centuries;
+  const d = (timeMs - frame.timeMs) / DAY_MS / 36525;
+  const seconds = d * (876600 * 3600 + 8640184.812866 + 2 * 0.093104 * t - 3 * 6.2e-6 * t * t)
+    + d * d * (0.093104 - 3 * 6.2e-6 * t) - 6.2e-6 * d * d * d;
+  return frame.gmst + seconds * DEG / 240;
+}
 
 function periodFor(altitudeKm: number) {
   const radius = EARTH_RADIUS_KM + altitudeKm;
@@ -136,7 +161,7 @@ export function constellationFromElements(elements: OrbitalElements[], maxCount:
     const altitudeKm = Math.cbrt(MU * (periodMinutes * 60 / (2 * Math.PI)) ** 2) - EARTH_RADIUS_KM;
     const satellite: SatelliteRecord = { id: `norad-${e.NORAD_CAT_ID}`, name: e.OBJECT_NAME, category, model: station ? 'station' : category === 'starlink' ? 'starlink' : 'satellite', altitudeKm, inclination: e.INCLINATION, raan: e.RA_OF_ASC_NODE, phase: e.MEAN_ANOMALY, periodMinutes, elements: e };
     const satrec = json2satrec(e);
-    if (!propagate(satrec, new Date(timeMs))) continue;
+    if (!sgp4(satrec, (timeMs / DAY_MS + 2440587.5 - satrec.jdsatepoch) * 1440)) continue;
     propagatedRecords.set(satellite, satrec);
     valid.push(satellite);
   }
@@ -147,7 +172,8 @@ function propagatedState(satellite: SatelliteRecord, timeMs: number) {
   if (!satellite.elements) return null;
   let satrec = propagatedRecords.get(satellite);
   if (!satrec) { satrec = json2satrec(satellite.elements); propagatedRecords.set(satellite, satrec); }
-  return propagate(satrec, new Date(timeMs));
+  // Match Date's millisecond resolution in the original propagate(Date) API.
+  return sgp4(satrec, (Math.trunc(timeMs) / DAY_MS + 2440587.5 - satrec.jdsatepoch) * 1440);
 }
 
 /** Deterministic constellation limited to maxCount, thinning mega-constellations evenly. */
@@ -201,11 +227,17 @@ export function satelliteInertialPosition(satellite: SatelliteRecord, timeMs: nu
 
 /** Earth-fixed world position (x = 90°E, y = north, z = 0°E) in km. */
 export function satelliteWorldPosition(satellite: SatelliteRecord, timeMs: number, sidereal: number, out: { x: number; y: number; z: number }) {
+  return sampleSatelliteWorldPosition(satellite, timeMs, satelliteFrame(timeMs, sidereal), out);
+}
+
+/** Exact WGS84 sample using a shared frame clock, also used for cached history. */
+export function sampleSatelliteWorldPosition<T extends { x: number; y: number; z: number }>(satellite: SatelliteRecord, timeMs: number, frame: SatelliteFrame, out: T): T {
   if (satellite.elements) {
+    timeMs = Math.trunc(timeMs);
     const state = propagatedState(satellite, timeMs);
     if (!state) { out.x = out.y = out.z = NaN; return out; }
     // Render WGS84 geodetic altitude on the application's spherical globe.
-    const gd = eciToGeodetic(state.position, gstime(new Date(timeMs)));
+    const gd = eciToGeodetic(state.position, sampleGmst(frame, timeMs));
     const radius = EARTH_RADIUS_KM + gd.height;
     out.x = radius * Math.cos(gd.latitude) * Math.sin(gd.longitude);
     out.y = radius * Math.sin(gd.latitude);
@@ -213,8 +245,9 @@ export function satelliteWorldPosition(satellite: SatelliteRecord, timeMs: numbe
     return out;
   }
   const p = satelliteInertialPosition(satellite, timeMs, out);
-  const cos = Math.cos(sidereal);
-  const sin = Math.sin(sidereal);
+  const angle = frame.sidereal + EARTH_ROTATION_RAD_S * (timeMs - frame.timeMs) / 1000;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
   const ex = cos * p.x + sin * p.y;
   const ey = -sin * p.x + cos * p.y;
   const ez = p.z;
