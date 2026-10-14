@@ -209,6 +209,8 @@ button:focus-visible, input:focus-visible {
   top: 18px;
   right: 18px;
   display: flex;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 36px);
   align-items: center;
   min-height: 46px;
   padding: 7px 12px;
@@ -236,6 +238,8 @@ button:focus-visible, input:focus-visible {
 .status-count svg { width: 13px; }
 .status-time { color: var(--muted); }
 .status-spinner { width: 14px; animation: spin .8s linear infinite; }
+.auto-refresh-pause { display: flex; flex-basis: 100%; align-items: center; justify-content: space-between; gap: 10px; padding-top: 5px; border-top: 1px solid var(--line); color: var(--warn); }
+.auto-refresh-pause button { border: 1px solid var(--line); border-radius: 5px; padding: 3px 8px; background: rgba(255,255,255,.05); color: inherit; font: inherit; cursor: pointer; }
 
 .atlas-search {
   position: absolute;
@@ -535,6 +539,7 @@ button:focus-visible, input:focus-visible {
   .source-status { top: 10px; right: 10px; min-height: 52px; padding: 5px 8px; gap: 6px; }
   .status-label { max-width: 75px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .atlas-search { top: 72px; left: 10px; width: calc(100vw - 20px); }
+  .atlas-app[data-live-paused="true"] .atlas-search { top: 108px; }
   .search-input-wrap { height: 42px; }
   .camera-hint { display: none; }
   .map-controls { right: 10px; bottom: 132px; }

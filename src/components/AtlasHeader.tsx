@@ -9,6 +9,8 @@ interface AtlasHeaderProps {
   loading: boolean;
   locale: Locale;
   t: Translator;
+  autoRefreshPaused: boolean;
+  onResume: () => void;
 }
 
 const STATUS_KEYS: Record<SourceStatus, MessageKey> = {
@@ -19,7 +21,7 @@ const STATUS_KEYS: Record<SourceStatus, MessageKey> = {
 };
 
 /** Data-freshness status pill pinned to the top-right corner. */
-export function AtlasHeader({ mode, snapshot, count, loading, locale, t }: AtlasHeaderProps) {
+export function AtlasHeader({ mode, snapshot, count, loading, locale, t, autoRefreshPaused, onResume }: AtlasHeaderProps) {
   const updated = new Intl.DateTimeFormat(locale === 'ja' ? 'ja-JP' : 'en-US', {
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC',
   }).format(new Date(snapshot.generatedAt));
@@ -33,6 +35,12 @@ export function AtlasHeader({ mode, snapshot, count, loading, locale, t }: Atlas
       <span className="status-count"><Radio aria-hidden="true" /> {count.toLocaleString(locale)} </span>
       <span className="status-time">{t('status.updated', { value: `${updated} UTC` })}</span>
       {loading && <LoaderCircle className="status-spinner" aria-label={t('status.loading')} />}
+      {mode === 'live-beta' && autoRefreshPaused && (
+        <span className="auto-refresh-pause" role="status">
+          <span>{t('status.autoRefreshPaused')}</span>
+          <button type="button" onClick={onResume}>{t('status.resume')}</button>
+        </span>
+      )}
     </header>
   );
 }
