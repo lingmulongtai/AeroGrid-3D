@@ -49,12 +49,16 @@ Public endpoints:
 - `GET /api/v1/flights?lat={-90..90}&lon={-180..180}&radius_nm={1..250}`
 - `GET /api/v1/weather`
 - `GET /api/v1/clouds?lat={-90..90}&lon={-180..180}&radius_nm={1..250}`
-- `GET /api/v1/satellites`
+- `GET /api/v1/satellites?limit={1..5000}` — integer limit, default 1200; invalid values return 400
 - `GET /api/v1/ships?lat={-90..90}&lon={-180..180}&radius_nm={1..250}`
 - `GET /api/v1/cameras`
 - `POST /api/v1/connections` / `DELETE /api/v1/connections` — personal one-hour provider sessions; raw keys are never returned
 
 Shared types live in `shared/contracts.ts`, including `AppMode`, `SourceStatus`, and `DataSnapshot<T>`.
+
+Satellite delivery uses the requested quality limit (300 / 1200 / 2400 / 4200), with only the 14 OMM fields required for SGP4, display and validation. Each orbital cache generation has one deterministic order: ISS and Tiangong first, then population-weighted categories with a 2% minimum weight. NORAD interval midpoints spread each category across its catalog number range; larger limits extend the same prefix. This changes the displayed population to include Starlink even at Low quality.
+
+`/api/v1/satellites` overrides the API's default `no-store` with `public, max-age=min(600, seconds until expiresAt)`, clamped to zero. Strong ETags distinguish generation, limit, metadata and encoded bytes; matching validators return 304. Unavailable responses remain `no-store`. JSON and gzip/Brotli representations are memoized in memory for up to 16 recently used limits per generation; the full persistent OMM cache and its refresh/failure policy remain unchanged. API JSON and static text assets support gzip/Brotli; PNG/JPG remain uncompressed. Satellite and camera catalogs ignore area-refresh tokens, retain unchanged snapshot references, and continue scheduled polling (10 minutes / 1 hour).
 
 ## Data sources and limits
 
@@ -93,6 +97,7 @@ npm run lint       # TypeScript
 npm test           # unit and API integration tests
 npm run test:e2e   # Playwright at 1440x900 and 390x844
 npm run build      # client + compiled production server
+npm run bench:satellite-payload # before/after sizes from an existing local OMM cache; no network
 npm audit
 ```
 
