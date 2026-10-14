@@ -9,6 +9,7 @@ import type {
 import { calculateFlightStats, generateRealisticDemoFlights, type FlightStats } from './useFlightData';
 import { connectionHeaders, readConnection } from '../data/connections';
 import { useLivePolling } from './useLivePolling';
+import { useAircraftIdle } from './useAircraftIdle';
 
 const LIVE_REFRESH_MS = 60_000;
 const DEMO_REFRESH_MS = 20_000;
@@ -29,6 +30,8 @@ interface AtlasDataState {
   flightStats: FlightStats;
   loading: boolean;
   refreshWeather: () => Promise<void>;
+  autoRefreshPaused: boolean;
+  resumeFlights: () => void;
 }
 
 function emptySnapshot<T>(mode: AppMode, source: string): DataSnapshot<T> {
@@ -75,6 +78,7 @@ export function useAtlasData({
   const historyRef = useRef(new Map<string, [number, number, number][]>());
   const lastGoodLiveRef = useRef<DataSnapshot<FlightRecord> | null>(null);
   const flightRequestRef = useRef<AbortSignal | undefined>(undefined);
+  const activity = useAircraftIdle(mode === 'live-beta' && flightsEnabled);
 
   const loadLiveFlights = useCallback(async (signal?: AbortSignal) => {
     if (mode !== 'live-beta' || !flightsEnabled) return;
@@ -166,8 +170,8 @@ export function useAtlasData({
 
   }, [demoFlightCount, flightsEnabled, mode, weatherEnabled]);
 
-  const flightScope = `${coverage.center.latitude}:${coverage.center.longitude}:${coverage.radiusNm}:${refreshToken}`;
-  useLivePolling(loadLiveFlights, mode === 'live-beta' && flightsEnabled, LIVE_REFRESH_MS, flightScope);
+  const flightScope = `${coverage.center.latitude}:${coverage.center.longitude}:${coverage.radiusNm}:${refreshToken}:${activity.resumeToken}`;
+  useLivePolling(loadLiveFlights, mode === 'live-beta' && flightsEnabled, LIVE_REFRESH_MS, flightScope, activity.paused, () => !activity.isIdle());
   const refreshWeather = useLivePolling(loadWeather, mode === 'live-beta' && weatherEnabled, LIVE_REFRESH_MS, String(refreshToken));
 
   const visibleFlightSnapshot = flightSnapshot.mode === mode || !mode ? flightSnapshot : emptySnapshot<FlightRecord>(mode, mode === 'demo' ? 'demo' : readConnection()?.flightSource ?? 'adsb.lol');
@@ -177,5 +181,5 @@ export function useAtlasData({
     visibleFlightSnapshot.status === 'rate-limited',
   );
 
-  return { flightSnapshot: visibleFlightSnapshot, weatherSnapshot, flightStats, loading, refreshWeather };
+  return { flightSnapshot: visibleFlightSnapshot, weatherSnapshot, flightStats, loading, refreshWeather, autoRefreshPaused: activity.paused, resumeFlights: activity.resume };
 }
