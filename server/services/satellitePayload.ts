@@ -24,7 +24,8 @@ export class SatellitePayload {
   async get(limit: number, encoding: SatelliteEncoding = 'identity'): Promise<Delivery> {
     const snapshot = await this.source.getSnapshot();
     if (snapshot.status === 'unavailable') {
-      return { body: Buffer.from(JSON.stringify(snapshot)), encoding: 'identity', maxAge: 0, cacheable: false };
+      const representation = await this.encode(Buffer.from(JSON.stringify(snapshot)), snapshot.generatedAt, limit, encoding);
+      return { body: representation.body, encoding, maxAge: 0, cacheable: false };
     }
     if (snapshot.generatedAt !== this.generation) {
       // Using fetchedAt as the validation clock makes the generation identical
