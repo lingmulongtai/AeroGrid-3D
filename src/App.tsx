@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
-import type { AppMode, RadiusCoverage } from '../shared/contracts';
+import type { AppMode, DataSnapshot, RadiusCoverage } from '../shared/contracts';
 import { AtlasHeader } from './components/AtlasHeader';
 import { EarthMap, type ColorMode, type GlobeViewState, type MapStyle, type PickResult, type Selection } from './components/Map';
 import { FlightInfoPanel } from './components/FlightInfoPanel';
@@ -90,6 +90,7 @@ export function App() {
   });
 
   const publicLayers = usePublicLayers(mode, coverage, layers, refreshToken, quality.maxSatellites);
+  const sourceState = (snapshot: DataSnapshot<unknown>) => snapshot.reason === 'outside-coverage' ? t('data.outsideCoverage') : snapshot.status;
   const satellites = useMemo(() => mode === 'live-beta' ? constellationFromElements(publicLayers.orbits.items, quality.maxSatellites) : buildConstellation(quality.maxSatellites), [mode, publicLayers.orbits.items, quality.maxSatellites]);
   const ships = mode === 'live-beta' ? publicLayers.ships.items : [];
   const customCameras = useMemo(() => publicStreams(), [refreshToken]);
@@ -241,10 +242,10 @@ export function App() {
           sourceDetails={{
             satellites: mode === 'demo' ? t('satellite.simulated') : `${t('data.orbits')} · ${publicLayers.orbits.status}`,
             weather: mode === 'demo' ? t('weather.particlesDemo') : `${t('data.forecast')} · ${publicLayers.clouds.status}`,
-            ships: `${publicLayers.ships.source === 'fintraffic' ? t('data.finland') : 'AISStream'} · ${publicLayers.ships.items.length} · ${publicLayers.ships.status}`,
-            cameras: `${t('data.stills')} · ${cameras.length} · ${publicLayers.cameras.status}`,
+            ships: `${publicLayers.ships.source === 'fintraffic' ? t('data.finland') : 'AISStream'} · ${publicLayers.ships.items.length} · ${sourceState(publicLayers.ships)}`,
+            cameras: `${t('data.stills')} · ${publicLayers.cameras.items.length} · ${sourceState(publicLayers.cameras)}${customCameras.length ? ` · YouTube ${customCameras.length}` : ''}`,
           }}
-          sourceNotes={[publicLayers.orbits, publicLayers.clouds, publicLayers.ships, publicLayers.cameras].map((snapshot) => `${snapshot.source}: ${snapshot.status} · ${snapshot.generatedAt}${snapshot.message ? ` · ${snapshot.message}` : ''}`)}
+          sourceNotes={[publicLayers.orbits, publicLayers.clouds, publicLayers.ships, publicLayers.cameras].map((snapshot) => `${snapshot.source}: ${sourceState(snapshot)} · ${snapshot.generatedAt}${snapshot.message && snapshot.reason !== 'outside-coverage' ? ` · ${snapshot.message}` : ''}`)}
         />
       )}
       {mode && <SearchBar flights={flightSnapshot.items} satellites={satellites} airports={airports} onSelect={handleSearch} t={t} />}
@@ -291,7 +292,7 @@ export function App() {
         <footer className="atlas-footer">
           <span>{mode === 'demo'
             ? t('status.demoSource')
-            : `${flightSnapshot.source} · ${t('status.coverage', { value: coverage.radiusNm })}${flightSnapshot.status === 'available' ? '' : ` · ${t(`status.reason.${flightSnapshot.status}` as 'status.reason.stale' | 'status.reason.rate-limited' | 'status.reason.unavailable')}`}`}</span>
+            : `${flightSnapshot.source} · ${t('status.coverage', { value: flightSnapshot.coverage.kind === 'radius' ? flightSnapshot.coverage.radiusNm : coverage.radiusNm })}${flightSnapshot.status === 'available' ? '' : ` · ${t(`status.reason.${flightSnapshot.status}` as 'status.reason.stale' | 'status.reason.rate-limited' | 'status.reason.unavailable')}`}`}</span>
           <span>{mode === 'demo' ? weatherLabel : `${t('data.forecast')} · ${publicLayers.clouds.items[0]?.validTime ?? publicLayers.clouds.status}`}</span>
           <span>{t('footer.attribution')}</span>
         </footer>
