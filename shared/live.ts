@@ -15,6 +15,22 @@ export interface OrbitalElements {
   MEAN_MOTION_DOT: number;
   MEAN_MOTION_DDOT: number;
 }
+
+export const ORBITAL_ELEMENT_FIELDS = [
+  'OBJECT_NAME', 'OBJECT_ID', 'EPOCH', 'MEAN_MOTION', 'ECCENTRICITY',
+  'INCLINATION', 'RA_OF_ASC_NODE', 'ARG_OF_PERICENTER', 'MEAN_ANOMALY',
+  'NORAD_CAT_ID', 'ELEMENT_SET_NO', 'BSTAR', 'MEAN_MOTION_DOT', 'MEAN_MOTION_DDOT',
+] as const satisfies readonly (keyof OrbitalElements)[];
+
+export type SatelliteCategory = 'station' | 'starlink' | 'broadband' | 'navigation' | 'geostationary' | 'earth-observation';
+
+export function satelliteCategory(elements: OrbitalElements): SatelliteCategory {
+  return elements.NORAD_CAT_ID === 25544 || elements.NORAD_CAT_ID === 48274 ? 'station'
+    : /STARLINK/i.test(elements.OBJECT_NAME) ? 'starlink'
+    : /ONEWEB|IRIDIUM/i.test(elements.OBJECT_NAME) ? 'broadband'
+    : /GPS|GALILEO|GLONASS|BEIDOU/i.test(elements.OBJECT_NAME) ? 'navigation'
+    : elements.MEAN_MOTION < 1.1 ? 'geostationary' : 'earth-observation';
+}
 export interface CloudProfile {
   longitude: number;
   latitude: number;

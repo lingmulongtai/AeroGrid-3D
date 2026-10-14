@@ -34,6 +34,39 @@ function serviceStub(): AtlasDataService {
 }
 
 describe('AeroGrid REST API', () => {
+  it('negotiates gzip and brotli for API JSON without changing cache or security headers', async () => {
+    const service = serviceStub();
+    vi.mocked(service.getStatus).mockReturnValue({ ...service.getStatus(), description: 'compressible JSON '.repeat(300) } as AtlasStatus);
+    const app = createApp({ dataService: service });
+    const identity = await request(app).get('/api/v1/status').set('Accept-Encoding', 'identity').expect(200);
+    for (const encoding of ['gzip', 'br']) {
+      const compressed = await request(app).get('/api/v1/status').set('Accept-Encoding', encoding).expect(200);
+      expect(compressed.headers['content-encoding']).toBe(encoding);
+      expect(compressed.headers.vary).toContain('Accept-Encoding');
+      expect(compressed.headers['cache-control']).toBe('no-store');
+      expect(compressed.headers.etag).toBe(identity.headers.etag);
+      expect(compressed.headers['x-content-type-options']).toBe('nosniff');
+      expect(compressed.body).toEqual(identity.body);
+    }
+  });
+
+  it('compresses static text assets and excludes PNG/JPG images', async () => {
+    const staticDir = await mkdtemp(path.join(tmpdir(), 'aerogrid-compression-'));
+    try {
+      await mkdir(path.join(staticDir, 'assets'));
+      for (const extension of ['js', 'css', 'json', 'svg', 'png', 'jpg']) {
+        await writeFile(path.join(staticDir, 'assets', `fixture.${extension}`), JSON.stringify({ fixture: 'static fixture '.repeat(300) }));
+      }
+      const app = createApp({ dataService: serviceStub(), staticDir });
+      for (const extension of ['js', 'css', 'json', 'svg', 'png', 'jpg']) {
+        const response = await request(app).get(`/assets/fixture.${extension}`).set('Accept-Encoding', 'gzip').expect(200);
+        expect(response.headers['content-encoding']).toBe(['png', 'jpg'].includes(extension) ? undefined : 'gzip');
+        expect(response.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+        expect(response.headers.etag).toBeTruthy();
+      }
+    } finally { await rm(staticDir, { recursive: true, force: true }); }
+  });
+
   it('validates the public flight coverage contract', async () => {
     const app = createApp({ dataService: serviceStub() });
     await request(app).get('/api/v1/flights?lat=91&lon=139&radius_nm=150')

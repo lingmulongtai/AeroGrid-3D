@@ -16,4 +16,15 @@ describe('observed orbital elements', () => {
     expect(constellationFromElements([], 100)).toEqual([]);
     expect(constellationFromElements([elements], 100, Date.UTC(2026, 10, 1))).toEqual([]);
   });
+  it('preserves the server prefix instead of sorting by NORAD or Starlink priority', () => {
+    const input = [
+      { ...elements, NORAD_CAT_ID: 70000, OBJECT_NAME: 'STARLINK-70000' },
+      { ...elements, NORAD_CAT_ID: 25544 },
+      { ...elements, NORAD_CAT_ID: 10000, OBJECT_NAME: 'GPS 10000' },
+      { ...elements, NORAD_CAT_ID: 48274, OBJECT_NAME: 'TIANGONG' },
+    ];
+    const records = constellationFromElements(input, 3, Date.UTC(2026, 9, 13, 6));
+    expect(records.map((record) => record.id)).toEqual(['norad-70000', 'norad-25544', 'norad-10000']);
+    expect(records.map((record) => record.category)).toEqual(['starlink', 'station', 'navigation']);
+  });
 });
