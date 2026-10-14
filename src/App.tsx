@@ -89,7 +89,7 @@ export function App() {
     refreshToken,
   });
 
-  const publicLayers = usePublicLayers(mode, coverage, layers, refreshToken);
+  const publicLayers = usePublicLayers(mode, coverage, layers, refreshToken, quality.maxSatellites);
   const satellites = useMemo(() => mode === 'live-beta' ? constellationFromElements(publicLayers.orbits.items, quality.maxSatellites) : buildConstellation(quality.maxSatellites), [mode, publicLayers.orbits.items, quality.maxSatellites]);
   const ships = mode === 'live-beta' ? publicLayers.ships.items : [];
   const customCameras = useMemo(() => publicStreams(), [refreshToken]);
