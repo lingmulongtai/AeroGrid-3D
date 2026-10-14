@@ -1,7 +1,7 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AIRCRAFT_IDLE_MS, useAircraftIdle } from './useAircraftIdle';
-afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 describe('aircraft inactivity pause', () => {
   it.each(['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'touchmove'])('pauses at 15 minutes and resumes on %s', async (event) => {
     vi.useFakeTimers();
