@@ -68,6 +68,7 @@ export class SatelliteLayer {
   private meshes: Record<SatelliteModelKind, InstancedMesh>;
   private geometries = createSatelliteGeometries();
   private records: SatelliteRecord[] = [];
+  private constellationSignature = '';
   private colors: Color[] = [];
   private trailGeometry = new BufferGeometry();
   private trails: LineSegments;
@@ -131,6 +132,15 @@ export class SatelliteLayer {
   }
 
   setConstellation(records: SatelliteRecord[]) {
+    const signature = JSON.stringify(records);
+    if (this.records.length && signature === this.constellationSignature) {
+      // Polling returns new objects even while the two-hour OMM cache is unchanged.
+      // Preserve anchors/history, but expose the caller's latest record objects.
+      this.records = records;
+      this.cached.forEach((entry, index) => { entry.record = records[index]; });
+      return;
+    }
+    this.constellationSignature = signature;
     this.records = records;
     this.frame = null;
     this.nextKeyframe = this.nextTrail = this.trailVertices = 0;
