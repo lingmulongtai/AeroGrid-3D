@@ -1,19 +1,13 @@
 import { siderealAngle } from '../globe/astro';
 import { eciToGeodetic, gstime, json2satrec, sgp4, type SatRec } from 'satellite.js';
-import type { OrbitalElements } from '../../shared/live';
+import { satelliteCategory, type OrbitalElements, type SatelliteCategory } from '../../shared/live';
 
 // A deterministic, physically plausible demo constellation. Orbits are
 // circular Keplerian orbits propagated in an inertial frame and rotated by
 // real sidereal time, so ground tracks and day/night geometry look right.
 // Positions are simulated and are never presented as live telemetry.
 
-export type SatelliteCategory =
-  | 'station'
-  | 'starlink'
-  | 'broadband'
-  | 'navigation'
-  | 'geostationary'
-  | 'earth-observation';
+export type { SatelliteCategory } from '../../shared/live';
 
 export type SatelliteModelKind = 'station' | 'starlink' | 'satellite';
 
@@ -146,17 +140,13 @@ const cache = new Map<number, SatelliteRecord[]>();
 const propagatedRecords = new WeakMap<SatelliteRecord, SatRec>();
 
 export function constellationFromElements(elements: OrbitalElements[], maxCount: number, timeMs = Date.now()): SatelliteRecord[] {
-  const ordered = [...elements].sort((a, b) => {
-    const priority = (e: OrbitalElements) => e.NORAD_CAT_ID === 25544 || e.NORAD_CAT_ID === 48274 ? 0 : /STARLINK/i.test(e.OBJECT_NAME) ? 2 : 1;
-    return priority(a) - priority(b) || a.NORAD_CAT_ID - b.NORAD_CAT_ID;
-  });
   const valid: SatelliteRecord[] = [];
-  for (const e of ordered) {
+  for (const e of elements) {
     if (valid.length >= maxCount) break;
     const epoch = Date.parse(`${e.EPOCH.replace(/Z$/, '')}Z`);
-    if (timeMs - epoch > 14 * 24 * 60 * 60_000 || epoch > timeMs + 24 * 60 * 60_000) continue;
-    const station = e.NORAD_CAT_ID === 25544 || e.NORAD_CAT_ID === 48274;
-    const category: SatelliteCategory = station ? 'station' : /STARLINK/i.test(e.OBJECT_NAME) ? 'starlink' : /ONEWEB|IRIDIUM/i.test(e.OBJECT_NAME) ? 'broadband' : /GPS|GALILEO|GLONASS|BEIDOU/i.test(e.OBJECT_NAME) ? 'navigation' : e.MEAN_MOTION < 1.1 ? 'geostationary' : 'earth-observation';
+    if (!Number.isFinite(epoch) || timeMs - epoch > 14 * 24 * 60 * 60_000 || epoch > timeMs + 24 * 60 * 60_000) continue;
+    const category = satelliteCategory(e);
+    const station = category === 'station';
     const periodMinutes = 1440 / e.MEAN_MOTION;
     const altitudeKm = Math.cbrt(MU * (periodMinutes * 60 / (2 * Math.PI)) ** 2) - EARTH_RADIUS_KM;
     const satellite: SatelliteRecord = { id: `norad-${e.NORAD_CAT_ID}`, name: e.OBJECT_NAME, category, model: station ? 'station' : category === 'starlink' ? 'starlink' : 'satellite', altitudeKm, inclination: e.INCLINATION, raan: e.RA_OF_ASC_NODE, phase: e.MEAN_ANOMALY, periodMinutes, elements: e };
