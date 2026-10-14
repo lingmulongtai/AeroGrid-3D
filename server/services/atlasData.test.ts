@@ -13,6 +13,25 @@ const flight: FlightRecord = {
 };
 
 describe('AtlasDataService', () => {
+  it('shares normalized nearby requests, upstream coordinates and one quota charge', async () => {
+    let now = Date.UTC(2026, 9, 15);
+    const fetchFlights = vi.fn(async () => ({ items: [flight], generatedAtMs: now }));
+    const quota = new DailyQuota(450);
+    const service = createAtlasDataService({ flightProvider: { fetchFlights }, weatherProvider: { fetchWeather: vi.fn() }, quota, now: () => now });
+    const first = await service.getFlights({ latitude: 35.681, longitude: 139.761, radiusNm: 147 });
+    const second = await service.getFlights({ latitude: 35.719, longitude: 139.799, radiusNm: 149.9 });
+    expect(second).toBe(first);
+    expect(first.coverage).toEqual({ kind: 'radius', center: { latitude: 35.7, longitude: 139.8 }, radiusNm: 150 });
+    expect(fetchFlights).toHaveBeenCalledExactlyOnceWith(35.7, 139.8, 150);
+    expect(quota.getState(now).count).toBe(1);
+    now += 60_001;
+    await service.getFlights(query);
+    expect(fetchFlights).toHaveBeenCalledTimes(2);
+    expect(quota.getState(now).count).toBe(2);
+    await service.getFlights({ latitude: -35.681, longitude: -139.761, radiusNm: 1 });
+    expect(fetchFlights).toHaveBeenLastCalledWith(-35.7, -139.8, 5);
+    expect(quota.getState(now).count).toBe(3);
+  });
   it('shares a flight snapshot for sixty seconds', async () => {
     let now = Date.UTC(2026, 6, 16, 0, 0, 0);
     const fetchFlights = vi.fn(async () => ({ items: [flight], generatedAtMs: now }));
