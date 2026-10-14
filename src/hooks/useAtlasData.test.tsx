@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RadiusCoverage } from '../../shared/contracts';
 import { useAtlasData } from './useAtlasData';
@@ -8,11 +8,28 @@ const coverage: RadiusCoverage = {
 };
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
 describe('useAtlasData', () => {
+  it('stops flights and weather while hidden, retaining cadence on return', async () => {
+    vi.useFakeTimers();
+    let visibility: DocumentVisibilityState = 'hidden';
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => Response.json({ mode: 'live-beta', source: String(url).includes('weather') ? 'rainviewer' : 'adsb.lol', status: 'available', generatedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), coverage, items: [] }));
+    const { result } = renderHook(() => useAtlasData({ mode: 'live-beta', coverage, flightsEnabled: true, weatherEnabled: true, demoFlightCount: 12, refreshToken: 0 }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000); await result.current.refreshWeather(); });
+    expect(fetch).not.toHaveBeenCalled();
+    await act(async () => { visibility = 'visible'; document.dispatchEvent(new Event('visibilitychange')); });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); visibility = 'hidden'; document.dispatchEvent(new Event('visibilitychange')); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); visibility = 'visible'; document.dispatchEvent(new Event('visibilitychange')); });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
   it('creates deterministic demo data without calling a live endpoint', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const { result } = renderHook(() => useAtlasData({
