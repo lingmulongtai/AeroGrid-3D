@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RadiusCoverage } from '../../shared/contracts';
 import { DEFAULT_LAYERS } from '../types/layers';
@@ -14,6 +14,47 @@ function stubFetch() {
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('public layer catalog requests', () => {
+  it('retains snapshot and item references across identical scheduled catalog responses', async () => {
+    vi.useFakeTimers();
+    const fetch = stubFetch();
+    const render = vi.fn();
+    const { result } = renderHook(() => { render(); return usePublicLayers('live-beta', coverage, { ...layers, ships: false, weather: false }, 0, 2400); });
+    await act(async () => {});
+    const orbits = result.current.orbits, cameras = result.current.cameras;
+    expect(orbits.status).toBe('available');
+    const renders = render.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(60 * 60_000); });
+    expect(fetch.mock.calls.filter(([url]) => String(url).includes('/satellites'))).toHaveLength(7);
+    expect(fetch.mock.calls.filter(([url]) => String(url).includes('/cameras'))).toHaveLength(2);
+    expect(result.current.orbits).toBe(orbits);
+    expect(result.current.orbits.items).toBe(orbits.items);
+    expect(result.current.cameras).toBe(cameras);
+    expect(render.mock.calls.length).toBe(renders);
+  });
+
+  it('uses matching ETags, accepts 304, and updates changed generations or availability', async () => {
+    vi.useFakeTimers();
+    let value = snapshot('celestrak'), etag = '"first"', notModified = false;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => notModified ? new Response(null, { status: 304 }) : Response.json(value, { headers: { ETag: etag } }));
+    const { result } = renderHook(() => usePublicLayers('live-beta', coverage, { ...layers, cameras: false, ships: false, weather: false }, 0, 300));
+    await act(async () => {});
+    const first = result.current.orbits;
+    // Same validator also avoids replacement if the caller's generatedAt differs.
+    value = { ...value, generatedAt: '2026-10-15T00:01:00.000Z' };
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000); });
+    expect(result.current.orbits).toBe(first);
+    notModified = true;
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000); });
+    expect(result.current.orbits).toBe(first);
+    notModified = false; etag = '"second"';
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000); });
+    expect(result.current.orbits).not.toBe(first);
+    expect(result.current.orbits.generatedAt).toBe(value.generatedAt);
+    value = { ...value, status: 'stale' };
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000); });
+    expect(result.current.orbits.status).toBe('stale');
+  });
+
   it('does not refetch satellites/cameras on area or refresh changes, while ships/clouds still refresh', async () => {
     const fetch = stubFetch();
     const { result, rerender } = renderHook(({ area, token }) => usePublicLayers('live-beta', area, layers, token, 2400), { initialProps: { area: coverage, token: 0 } });
