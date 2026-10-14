@@ -14,6 +14,23 @@ afterEach(() => {
 });
 
 describe('useAtlasData', () => {
+  it('ages hidden aircraft to stale and removes them after five minutes without fetching', async () => {
+    vi.useFakeTimers();
+    let visibility: DocumentVisibilityState = 'visible';
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+    const item = { id: 'abc123', callsign: 'JAL42', longitude: 139.7, latitude: 35.6, altitude: 9000, velocity: 240, heading: 90, verticalRate: 0, onGround: false, category: 'heavy', lastSeenSeconds: 0.4, positionHistory: [] };
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({ mode: 'live-beta', source: 'adsb.lol', status: 'available', generatedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), coverage, items: [item] }));
+    const { result } = renderHook(() => useAtlasData({ mode: 'live-beta', coverage, flightsEnabled: true, weatherEnabled: false, demoFlightCount: 12, refreshToken: 0 }));
+    await act(async () => {});
+    expect(result.current.flightSnapshot.items).toHaveLength(1);
+    await act(async () => { visibility = 'hidden'; document.dispatchEvent(new Event('visibilitychange')); await vi.advanceTimersByTimeAsync(60_001); });
+    expect(result.current.flightSnapshot.status).toBe('stale');
+    expect(result.current.flightSnapshot.items).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(240_000); });
+    expect(result.current.flightSnapshot).toMatchObject({ mode: 'live-beta', source: 'adsb.lol', status: 'unavailable', items: [] });
+    expect(result.current.weatherSnapshot.mode).toBe('live-beta');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
   it('stops only aircraft after 15 idle minutes, then resumes immediately on activity', async () => {
     vi.useFakeTimers();
     const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => Response.json({ mode: 'live-beta', source: String(url).includes('weather') ? 'rainviewer' : 'adsb.lol', status: 'available', generatedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), coverage, items: [] }));
