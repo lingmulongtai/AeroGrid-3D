@@ -1,4 +1,5 @@
 import express, { type Express } from 'express';
+import compression from 'compression';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -21,6 +22,8 @@ function parseNumber(value: unknown): number {
 export function createApp({ dataService, staticDir, logger, publicLayers = new PublicLayers(), connections = new Connections(dataService) }: AppOptions): Express {
   const app = express();
   app.disable('x-powered-by');
+  // MIME filtering compresses JSON/JS/CSS/SVG while leaving raster images alone.
+  app.use(compression());
   app.use((_req, res, next) => {
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
