@@ -22,6 +22,7 @@ The public beta is designed for non-commercial, low-cost operation without an SL
 - Collapsible sidebar, top-centred search for aircraft, satellites and airports, fullscreen toggle, English and Japanese UI.
 - Live source, coverage, update time, freshness, and failure state are always visible.
 - The last successful aircraft snapshot may be shown as `STALE` for at most five minutes. It is then removed.
+- All live polling stops while the browser tab is hidden. Aircraft auto refresh also pauses after 15 minutes without pointer, key, wheel or touch input; activity or the header's Resume button requests a fresh snapshot. Pausing does not extend the five-minute stale limit.
 - Demo satellites remain simulated; Live Beta uses CelesTrak OMM elements with SGP4 predictions and displays the element epoch. Neither is presented as live telemetry.
 - Aircraft and satellite trails have independent layer switches; station names respect the Labels switch.
 - Cloud volumes stay above the globe at their modelled altitude, including close tilted views. Live cloud heights come from GFS pressure-level forecasts; rainfall comes from RainViewer, with illustrative rain-column heights.
@@ -51,23 +52,27 @@ Public endpoints:
 - `GET /api/v1/clouds?lat={-90..90}&lon={-180..180}&radius_nm={1..250}`
 - `GET /api/v1/satellites?limit={1..5000}` — integer limit, default 1200; invalid values return 400
 - `GET /api/v1/ships?lat={-90..90}&lon={-180..180}&radius_nm={1..250}`
-- `GET /api/v1/cameras`
+- `GET /api/v1/cameras?lat={-90..90}&lon={-180..180}&radius_nm={1..250}`
 - `POST /api/v1/connections` / `DELETE /api/v1/connections` — personal one-hour provider sessions; raw keys are never returned
 
 Shared types live in `shared/contracts.ts`, including `AppMode`, `SourceStatus`, and `DataSnapshot<T>`.
 
 Satellite delivery uses the requested quality limit (300 / 1200 / 2400 / 4200), with only the 14 OMM fields required for SGP4, display and validation. Each orbital cache generation has one deterministic order: ISS and Tiangong first, then population-weighted categories with a 2% minimum weight. NORAD interval midpoints spread each category across its catalog number range; larger limits extend the same prefix. This changes the displayed population to include Starlink even at Low quality.
 
-`/api/v1/satellites` overrides the API's default `no-store` with `public, max-age=min(600, seconds until expiresAt)`, clamped to zero. Strong ETags distinguish generation, limit, metadata and encoded bytes; matching validators return 304. Unavailable responses remain `no-store`. JSON and gzip/Brotli representations are memoized in memory for up to 16 recently used limits per generation; the full persistent OMM cache and its refresh/failure policy remain unchanged. API JSON and static text assets support gzip/Brotli; PNG/JPG remain uncompressed. Satellite and camera catalogs ignore area-refresh tokens, retain unchanged snapshot references, and continue scheduled polling (10 minutes / 1 hour).
+`/api/v1/satellites` overrides the API's default `no-store` with `public, max-age=min(600, seconds until expiresAt)`, clamped to zero. Strong ETags distinguish generation, limit, metadata and encoded bytes; matching validators return 304. Unavailable responses remain `no-store`. JSON and gzip/Brotli representations are memoized in memory for up to 16 recently used limits per generation; the full persistent OMM cache and its refresh/failure policy remain unchanged. API JSON and static text assets support gzip/Brotli; PNG/JPG remain uncompressed. Satellite and camera catalogs ignore unrelated refresh tokens and retain unchanged snapshot references. Cameras now request the loaded area; satellites remain global.
+
+Aircraft requests round the center to a 0.1° grid and round the radius up to the next 5 NM for both upstream requests and shared cache keys. Response coverage and the footer show that normalized radius. Fintraffic ships and cameras retain shared full upstream catalogs (60 seconds / 1 hour), but each API response contains only points within the requested great-circle radius. Requests outside conservative Finnish/Baltic bounds return an empty `reason: outside-coverage` snapshot without contacting Fintraffic; the client also skips those requests and shows Outside coverage. Registered YouTube streams and AISStream are independent of these bounds.
+
+Visible-page polling intervals are 60 seconds for aircraft, weather metadata and ships, 5 minutes for cloud profiles (30-minute server cache), 10 minutes for satellites, and 1 hour for camera catalogs. Returning to the tab issues one request per due layer and resumes its cadence; it does not replay missed polls. This controls API polling, not imagery or video playback. Aircraft's 450-request daily protection and HTTP 429 handling remain unchanged. An actively operated tab has up to 1,440 aircraft polling opportunities/day before cache sharing and the allowance cap; an unattended tab makes about 15 requests from a fresh load, then pauses. A tab hidden all day makes none.
 
 ## Data sources and limits
 
 | Data | Source | Runtime policy |
 | --- | --- | --- |
-| Live aircraft | [adsb.lol](https://www.adsb.lol/docs/open-data/api/) (ODbL) or selected provider | Server-only, 250 NM maximum, 60-second cache, 1 upstream request/second, 450-request daily soft limit, stop upstream retries after HTTP 429 |
+| Live aircraft | [adsb.lol](https://www.adsb.lol/docs/open-data/api/) (ODbL) or selected provider | Server-only, 250 NM maximum, normalized 0.1° / 5 NM coverage, 60-second cache, 1 upstream request/second, 450-request daily soft limit, stop upstream retries after HTTP 429 |
 | Live orbit predictions | [CelesTrak OMM](https://celestrak.org/NORAD/documentation/gp-data-formats.php) | Persistent two-hour cache, stop automatic downloads on failure, no synthetic fallback |
 | Cloud profiles | [Open-Meteo GFS](https://open-meteo.com/en/docs/gfs-api) (CC BY 4.0) | Regional nine-point pressure-level forecasts, 30-minute cache, ground-level exclusion |
-| Ships / cameras | [Fintraffic](https://www.digitraffic.fi/en/terms-of-service/) (CC BY 4.0) | Finnish receiver coverage; recent vessel reports only, periodic still images |
+| Ships / cameras | [Fintraffic](https://www.digitraffic.fi/en/terms-of-service/) (CC BY 4.0) | Finnish/Baltic bounds plus requested-radius filtering; shared 60-second / 1-hour catalogs, recent vessel reports only, periodic still images |
 | Radar | [RainViewer API](https://www.rainviewer.com/api.html) | Server-only metadata, latest documented PNG frame, 10-minute cache, one metadata refresh after tile failure |
 | Demo | AeroGrid deterministic generator | Never presented as live data |
 | Imagery | [EOX Sentinel-2 cloudless](https://s2maps.eu/) (CC BY-NC-SA 4.0), [Esri World Imagery and Dark Gray Canvas](https://www.esri.com/), [NASA GIBS Black Marble](https://www.earthdata.nasa.gov/gibs) | Browser tile requests, viewport-prioritised, LRU cache |
