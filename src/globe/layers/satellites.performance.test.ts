@@ -139,6 +139,8 @@ describe('satellite propagation budgets and cached geometry', () => {
 
   it('bounds cold and warm 2400-satellite frames, including trails, selection and follow', () => {
     const records = constellationFromElements(syntheticElements(2400), 2400, epoch);
+    expect(records).toHaveLength(2400);
+    expect(records.filter((record) => record.periodMinutes >= 225)).toHaveLength(600);
     const layer = new SatelliteLayer(); layer.setConstellation(records); layer.selectedId = records[0].id;
     vi.mocked(sgp4).mockClear(); vi.mocked(gstime).mockClear();
     const counts: number[] = [];
