@@ -80,7 +80,7 @@ export function App() {
     void loadRegionalAirports().then((regional) => setAirports([...MAJOR_AIRPORTS, ...regional]));
   }, []);
 
-  const { flightSnapshot, weatherSnapshot, flightStats, loading, refreshWeather } = useAtlasData({
+  const { flightSnapshot, weatherSnapshot, flightStats, loading, refreshWeather, autoRefreshPaused, resumeFlights } = useAtlasData({
     mode,
     coverage,
     flightsEnabled: layers.flights,
@@ -193,7 +193,7 @@ export function App() {
       : t('weather.unavailable');
 
   return (
-    <main className="atlas-app">
+    <main className="atlas-app" data-live-paused={autoRefreshPaused}>
       <EarthMap
         mode={mode ?? 'demo'}
         layers={layers}
@@ -249,7 +249,7 @@ export function App() {
         />
       )}
       {mode && <SearchBar flights={flightSnapshot.items} satellites={satellites} airports={airports} onSelect={handleSearch} t={t} />}
-      {mode && <AtlasHeader mode={mode} snapshot={flightSnapshot} count={flightStats.airborne} loading={loading} locale={locale} t={t} />}
+      {mode && <AtlasHeader mode={mode} snapshot={flightSnapshot} count={flightStats.airborne} loading={loading} locale={locale} t={t} autoRefreshPaused={autoRefreshPaused} onResume={resumeFlights} />}
 
       <AnimatePresence>
         {selectedShip && <ShipPanel key={selectedShip.id} ship={selectedShip} onClose={() => setSelection(null)} t={t} />}
