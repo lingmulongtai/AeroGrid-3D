@@ -35,6 +35,7 @@ export interface DataSnapshot<T> {
   items: T[];
   message?: string;
   retryAfterSeconds?: number;
+  reason?: 'outside-coverage';
 }
 
 export interface FlightRecord {
