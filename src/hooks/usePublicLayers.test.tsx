@@ -14,6 +14,29 @@ function stubFetch() {
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('public layer catalog requests', () => {
+  it('restores both catalogs after a temporary failure followed by the same ETag', async () => {
+    vi.useFakeTimers();
+    let offline = false;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (offline) throw new Error('offline');
+      return Response.json(snapshot(String(url).includes('satellites') ? 'celestrak' : 'fintraffic'), { headers: { ETag: '"same-generation"' } });
+    });
+    const { result } = renderHook(() => usePublicLayers('live-beta', coverage, { ...layers, ships: false, weather: false }, 0, 300));
+    await act(async () => {});
+    expect(result.current.orbits.items).toHaveLength(1);
+    expect(result.current.cameras.items).toHaveLength(1);
+    offline = true;
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_600_000); });
+    expect(result.current.orbits.items).toEqual([]);
+    expect(result.current.cameras.items).toEqual([]);
+    offline = false;
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_600_000); });
+    expect(result.current.orbits.items).toHaveLength(1);
+    expect(result.current.cameras.items).toHaveLength(1);
+    expect(result.current.orbits.status).toBe('available');
+    expect(result.current.cameras.status).toBe('available');
+  });
+
   it('retains snapshot and item references across identical scheduled catalog responses', async () => {
     vi.useFakeTimers();
     const fetch = stubFetch();

@@ -36,7 +36,10 @@ function useLayer<T>(mode: AppMode | null, enabled: boolean, url: string, source
           publish(catalog && (sameETag || sameGeneration) ? { ...value, items: previous.items } : value);
         }
       } catch (error) {
-        if (!controller.signal.aborted) publish({ ...empty<T>(source), message: (error as Error).message });
+        if (!controller.signal.aborted) {
+          lastETag = null;
+          publish({ ...empty<T>(source), message: (error as Error).message });
+        }
       }
     };
     void load();
