@@ -230,8 +230,9 @@ export class SatelliteLayer {
 
   private cacheTrails() {
     if (!this.frame || !this.cached.length) return;
-    // At most N/24 exact history samples per frame, including cold fill. Prepare
-    // the next absolute grid sample early so shared step boundaries cannot spike.
+    // At most N/24 live history samples per frame, including cold fill. Prepare
+    // the next grid sample early so shared boundaries cannot spike SGP4 work.
+    // Analytic demo history is cheap and fills immediately, preserving its look.
     let budget = Math.ceil(this.cached.length / 24);
     for (let visited = 0; visited < this.cached.length && budget; visited++) {
       const entry = this.cached[this.nextTrail];
@@ -248,8 +249,7 @@ export class SatelliteLayer {
         trail.points[slot * 3 + 1] = sample.y;
         trail.points[slot * 3 + 2] = sample.z;
         trail.ticks[slot] = tick;
-        budget--;
-        break;
+        if (entry.record.elements) { budget--; break; }
       }
     }
   }

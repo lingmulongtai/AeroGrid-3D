@@ -121,6 +121,22 @@ describe('satellite sampling precision and shared frame positions', () => {
 });
 
 describe('satellite propagation budgets and cached geometry', () => {
+  it('shows complete analytic demo trails immediately, including after a pause', () => {
+    const record = buildConstellation(1)[0];
+    const layer = new SatelliteLayer(); layer.setConstellation([record]);
+    const trails = layer.group.children.find((child) => child instanceof LineSegments) as LineSegments;
+    const attribute = trails.geometry.getAttribute('position') as BufferAttribute;
+    for (const time of [epoch + 1234, epoch + 600_000]) {
+      update(layer, time);
+      const step = 150_000 / 13, newest = Math.floor(time / step);
+      for (let k = 0; k < 13; k++) {
+        const expected = sampleSatelliteWorldPosition(record, (newest - k) * step, satelliteFrame(time, angle(time)), new Vector3());
+        expect(new Vector3().fromBufferAttribute(attribute, k * 2 + 1).distanceTo(expected)).toBeLessThan(0.001);
+      }
+    }
+    layer.dispose();
+  });
+
   it('bounds cold and warm 2400-satellite frames, including trails, selection and follow', () => {
     const records = constellationFromElements(syntheticElements(2400), 2400, epoch);
     const layer = new SatelliteLayer(); layer.setConstellation(records); layer.selectedId = records[0].id;
