@@ -14,6 +14,40 @@ afterEach(() => {
 });
 
 describe('useAtlasData', () => {
+  it('stops only aircraft after 15 idle minutes, then resumes immediately on activity', async () => {
+    vi.useFakeTimers();
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => Response.json({ mode: 'live-beta', source: String(url).includes('weather') ? 'rainviewer' : 'adsb.lol', status: 'available', generatedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), coverage, items: [] }));
+    const { result } = renderHook(() => useAtlasData({ mode: 'live-beta', coverage, flightsEnabled: true, weatherEnabled: true, demoFlightCount: 12, refreshToken: 0 }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
+    const flightCalls = () => fetch.mock.calls.filter(([url]) => String(url).includes('/flights')).length;
+    expect(flightCalls()).toBe(15); // Initial request + t=60..840s; t=900 is idle.
+    expect(result.current.autoRefreshPaused).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_600_000); });
+    expect(flightCalls()).toBe(15);
+    expect(fetch.mock.calls.filter(([url]) => String(url).includes('/weather')).length).toBeGreaterThan(16);
+    await act(async () => { document.dispatchEvent(new Event('pointerdown')); });
+    expect(result.current.autoRefreshPaused).toBe(false);
+    expect(flightCalls()).toBe(16);
+    await act(async () => { await vi.advanceTimersByTimeAsync(900_000); });
+    expect(result.current.autoRefreshPaused).toBe(true);
+    const pausedCount = flightCalls();
+    await act(async () => { result.current.resumeFlights(); });
+    expect(flightCalls()).toBe(pausedCount + 1);
+    expect(result.current.autoRefreshPaused).toBe(false);
+  });
+  it('makes only one fresh flight request after returning from a long hidden interval', async () => {
+    vi.useFakeTimers();
+    let visibility: DocumentVisibilityState = 'visible';
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({ mode: 'live-beta', source: 'adsb.lol', status: 'available', generatedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), coverage, items: [] }));
+    const { result } = renderHook(() => useAtlasData({ mode: 'live-beta', coverage, flightsEnabled: true, weatherEnabled: false, demoFlightCount: 12, refreshToken: 0 }));
+    await act(async () => {});
+    await act(async () => { visibility = 'hidden'; document.dispatchEvent(new Event('visibilitychange')); await vi.advanceTimersByTimeAsync(3_600_000); });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await act(async () => { visibility = 'visible'; document.dispatchEvent(new Event('visibilitychange')); });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(result.current.autoRefreshPaused).toBe(false);
+  });
   it('stops flights and weather while hidden, retaining cadence on return', async () => {
     vi.useFakeTimers();
     let visibility: DocumentVisibilityState = 'hidden';
