@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useLivePolling } from './useLivePolling';
 
@@ -6,7 +6,7 @@ function visibility(value: DocumentVisibilityState) {
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(value);
   document.dispatchEvent(new Event('visibilitychange'));
 }
-afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 describe('visibility-aware live polling', () => {
   it('does not load while initially hidden and loads once on return without catch-up', async () => {
     vi.useFakeTimers(); visibility('hidden');
