@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { AtlasDataService } from './services/atlasData.js';
 import { PublicLayers } from './services/publicLayers.js';
 import { Connections, validatePreferences } from './services/connections.js';
+import { SatellitePayload, type SatelliteEncoding } from './services/satellitePayload.js';
 
 interface AppOptions {
   dataService: AtlasDataService;
@@ -21,9 +22,10 @@ function parseNumber(value: unknown): number {
 
 export function createApp({ dataService, staticDir, logger, publicLayers = new PublicLayers(), connections = new Connections(dataService) }: AppOptions): Express {
   const app = express();
+  const satellitePayload = new SatellitePayload(publicLayers.orbits);
   app.disable('x-powered-by');
   // MIME filtering compresses JSON/JS/CSS/SVG while leaving raster images alone.
-  app.use(compression());
+  app.use(compression({ filter: (req, res) => req.path !== '/api/v1/satellites' && compression.filter(req, res) }));
   app.use((_req, res, next) => {
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
@@ -126,7 +128,26 @@ export function createApp({ dataService, staticDir, logger, publicLayers = new P
     if (!query) return res.status(400).json({ message: 'Valid lat, lon and radius_nm (1–250) required' });
     res.json(await publicLayers.clouds(query));
   });
-  app.get('/api/v1/satellites', (_req, res, next) => { void publicLayers.orbits.getSnapshot().then((snapshot) => res.json(snapshot)).catch(next); });
+  app.get('/api/v1/satellites', (req, res, next) => {
+    const value = req.query.limit ?? '1200';
+    if (typeof value !== 'string' || !/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 5000) {
+      return res.status(400).json({ code: 'INVALID_LIMIT', message: 'limit must be an integer between 1 and 5000 (default 1200)' });
+    }
+    const encoding = req.headers['accept-encoding'] ? req.acceptsEncodings(['br', 'gzip', 'identity']) : 'identity';
+    if (!encoding) return res.sendStatus(406);
+    void satellitePayload.get(Number(value), encoding as SatelliteEncoding).then((payload) => {
+      res.type('json').vary('Accept-Encoding');
+      res.setHeader('Cache-Control', payload.cacheable ? `public, max-age=${payload.maxAge}` : 'no-store');
+      if (payload.etag) {
+        res.setHeader('ETag', payload.etag);
+        if (req.fresh) { res.status(304).end(); return; }
+      }
+      // Already encoded, so the generic compression middleware passes through.
+      if (payload.encoding !== 'identity') res.setHeader('Content-Encoding', payload.encoding);
+      if (!payload.cacheable) { res.status(200).end(payload.body); return; }
+      res.send(payload.body);
+    }).catch(next);
+  });
   app.get('/api/v1/cameras', async (_req, res) => { res.json(await publicLayers.cameras()); });
   app.get('/api/v1/ships', async (req, res) => {
     const query = area(req);
