@@ -184,6 +184,31 @@ describe('satellite propagation budgets and cached geometry', () => {
     layer.dispose();
   });
 
+  it('retains anchors and history on identical OMM polls and invalidates changed OMM', () => {
+    const elements = syntheticElements(2);
+    const records = constellationFromElements(elements, 2, epoch);
+    const layer = new SatelliteLayer(); layer.setConstellation(records);
+    for (let i = 0; i < 40; i++) update(layer, epoch + i * 16);
+    const trails = layer.group.children.find((child) => child instanceof LineSegments) as LineSegments;
+    const attribute = trails.geometry.getAttribute('position');
+    const position = layer.getWorldPosition(records[0].id);
+    const replacement = constellationFromElements(elements.map((element) => ({ ...element })), 2, epoch);
+    vi.mocked(sgp4).mockClear();
+    layer.setConstellation(replacement); update(layer, epoch + 640);
+    expect(layer.list).toBe(replacement);
+    expect(layer.getWorldPosition(records[0].id)).toBe(position);
+    expect(trails.geometry.getAttribute('position')).toBe(attribute);
+    expect(vi.mocked(sgp4).mock.calls.length).toBe(0);
+
+    const changed = constellationFromElements(elements.map((element, i) => ({ ...element, MEAN_ANOMALY: element.MEAN_ANOMALY + (i === 0 ? 20 : 0) })), 2, epoch);
+    vi.mocked(sgp4).mockClear();
+    layer.setConstellation(changed); update(layer, epoch + 656);
+    expect(trails.geometry.getAttribute('position')).not.toBe(attribute);
+    expect(vi.mocked(sgp4).mock.calls.length).toBe(5); // Two anchors each + one budgeted history sample.
+    expect(layer.getWorldPosition(changed[0].id)!.distanceTo(reference(changed[0], epoch + 656))).toBeLessThan(0.1);
+    layer.dispose();
+  });
+
   it('recalculates the 256-segment selected orbit only on selection or the 10-second deadline', () => {
     const records = constellationFromElements(syntheticElements(2), 2, epoch);
     const layer = new SatelliteLayer(); layer.setConstellation(records); layer.showTrails = true; layer.selectedId = records[0].id;

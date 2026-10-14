@@ -43,6 +43,8 @@ no progressive fill. Geometry is written relative to the current floating origin
 from cached world points, with its head attached to the interpolated model every frame.
 Selected orbit geometry refreshes every ten seconds or on a selection change;
 only its head and origin translation change in between.
+Identical OMM polls retain their anchors/history and GPU buffers; a changed
+catalog, including changed elements under the same NORAD ID, invalidates them.
 
 The cold first frame/resume still computes two anchors per satellite, and selecting
 an orbit computes 257 points. These one-off costs are outside the steady-state
