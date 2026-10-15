@@ -23,7 +23,7 @@ export class DailyQuota {
   nextAllowedAt(nowMs = Date.now()): number {
     this.rollDay(nowMs);
     if (this.count < this.limit) return Math.max(nowMs, this.nextRequestAt);
-    const date = new Date(nowMs);
+    const date = new Date(this.day);
     return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1);
   }
 
@@ -34,7 +34,8 @@ export class DailyQuota {
 
   private rollDay(nowMs: number): void {
     const nextDay = new Date(nowMs).toISOString().slice(0, 10);
-    if (nextDay === this.day) return;
+    // Late async completions and clock corrections cannot reopen an older day.
+    if (nextDay <= this.day) return;
     this.day = nextDay;
     this.count = 0;
     this.nextRequestAt = 0;
