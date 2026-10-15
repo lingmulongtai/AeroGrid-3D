@@ -5,8 +5,36 @@ import { createAtlasDataService } from './atlasData';
 import { Connections, validatePreferences } from './connections';
 import { AirplanesLiveProvider } from '../providers/airplanesLive';
 import { ProviderError } from '../providers/errors';
+import { TestBudgetStore } from '../../tests/fixtures/flightBudgetStore';
+import { PersistentFlightBudget } from '../lib/flightBudget';
+import type { FlightBudgetSource } from '../lib/flightBudgetConfig';
 
 describe('private provider connections', () => {
+  it('shares paid cooldown across independent connection managers without sharing keys or provider pools', async () => {
+    const stores = new Map<FlightBudgetSource, TestBudgetStore>();
+    const budgets = (source: FlightBudgetSource) => {
+      if (!stores.has(source)) stores.set(source, new TestBudgetStore());
+      return new PersistentFlightBudget(stores.get(source)!, false);
+    };
+    const upstream = vi.spyOn(AirplanesLiveProvider.prototype, 'fetchFlights')
+      .mockRejectedValueOnce(new ProviderError('rate limited', 429, 3600))
+      .mockImplementation(async () => ({ items: [], generatedAtMs: Date.now() }));
+    const a = new Connections(createAtlasDataService(), budgets);
+    const b = new Connections(createAtlasDataService(), budgets);
+    try {
+      const first = a.create({ flightSource: 'adsbexchange', shipSource: 'fintraffic', rapidApiKey: 'first-private-key' });
+      await a.get(first.token)!.flights.getFlights({ latitude: 35, longitude: 140, radiusNm: 150 });
+      a.remove(first.token);
+      const next = b.create({ flightSource: 'adsbexchange', shipSource: 'fintraffic', rapidApiKey: 'another-private-key' });
+      expect((await b.get(next.token)!.flights.getFlights({ latitude: 60, longitude: 25, radiusNm: 100 })).status).toBe('rate-limited');
+      expect(upstream).toHaveBeenCalledTimes(1);
+      const legacy = b.create({ flightSource: 'airplanes.live', shipSource: 'fintraffic' });
+      expect((await b.get(legacy.token)!.flights.getFlights({ latitude: 60, longitude: 25, radiusNm: 100 })).status).toBe('available');
+      expect(upstream).toHaveBeenCalledTimes(2);
+      const persisted = [...stores.values()].map((store) => store.contents).join('');
+      for (const secret of ['first-private-key', 'another-private-key', first.token, next.token]) expect(persisted).not.toContain(secret);
+    } finally { a.close(); b.close(); upstream.mockRestore(); }
+  });
   it('preserves paid provider cooldown when a client reconnects', async () => {
     const upstream = vi.spyOn(AirplanesLiveProvider.prototype, 'fetchFlights').mockRejectedValue(new ProviderError('rate limited', 429, 3600));
     const connections = new Connections();
