@@ -22,7 +22,9 @@ describe('persistent aircraft budget', () => {
     await a.complete(first.reservation!, start + 1);
     const restarted = budget(store);
     expect((await restarted.reserve(start + LIVE_FLIGHT_REFRESH_MS - 1)).allowed).toBe(false);
-    expect((await restarted.reserve(start + LIVE_FLIGHT_REFRESH_MS)).allowed).toBe(true);
+    // Completion was 1ms after admission: its full interval also survives.
+    expect((await restarted.reserve(start + LIVE_FLIGHT_REFRESH_MS)).allowed).toBe(false);
+    expect((await restarted.reserve(start + LIVE_FLIGHT_REFRESH_MS + 1)).allowed).toBe(true);
     expect(restarted.getState(start).count).toBe(2);
   });
   it('never admits beyond 450 on a UTC day, including restart per attempt', async () => {
