@@ -292,7 +292,7 @@ export function App() {
         <footer className="atlas-footer">
           <span>{mode === 'demo'
             ? t('status.demoSource')
-            : `${flightSnapshot.source} · ${t('status.coverage', { value: flightSnapshot.coverage.kind === 'radius' ? flightSnapshot.coverage.radiusNm : coverage.radiusNm })}${flightSnapshot.status === 'available' ? '' : ` · ${t(`status.reason.${flightSnapshot.status}` as 'status.reason.stale' | 'status.reason.rate-limited' | 'status.reason.unavailable')}`}`}</span>
+            : `${flightSnapshot.source} · ${t('status.coverage', { value: flightSnapshot.coverage.kind === 'radius' ? flightSnapshot.coverage.radiusNm : coverage.radiusNm })}${flightSnapshot.status === 'available' ? '' : ` · ${flightSnapshot.reason === 'budget-paced' ? t('status.reason.budget-paced') : t(`status.reason.${flightSnapshot.status}` as 'status.reason.stale' | 'status.reason.rate-limited' | 'status.reason.unavailable')}`}`}</span>
           <span>{mode === 'demo' ? weatherLabel : `${t('data.forecast')} · ${publicLayers.clouds.items[0]?.validTime ?? publicLayers.clouds.status}`}</span>
           <span>{t('footer.attribution')}</span>
         </footer>
