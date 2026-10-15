@@ -36,6 +36,7 @@ export interface DataSnapshot<T> {
   message?: string;
   retryAfterSeconds?: number;
   nextRefreshAt?: string;
+  nextRefreshAfterMs?: number;
   reason?: 'outside-coverage' | 'budget-paced';
 }
 

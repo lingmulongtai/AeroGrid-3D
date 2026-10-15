@@ -106,6 +106,7 @@ describe('AtlasDataService', () => {
     const first = await service.getFlights({ latitude: 35.681, longitude: 139.761, radiusNm: 147 });
     const second = await service.getFlights({ latitude: 35.719, longitude: 139.799, radiusNm: 149.9 });
     expect(second).toBe(first);
+    expect(first.nextRefreshAfterMs).toBe(210_000);
     expect(first.coverage).toEqual({ kind: 'radius', center: { latitude: 35.7, longitude: 139.8 }, radiusNm: 150 });
     expect(fetchFlights).toHaveBeenCalledExactlyOnceWith(35.7, 139.8, 150);
     expect(quota.getState(now).count).toBe(1);
@@ -134,7 +135,7 @@ describe('AtlasDataService', () => {
       mode: 'live-beta', source: 'airplanes.live', status: 'available', items: [flight],
     });
     now += 59_000;
-    await service.getFlights(query);
+    expect((await service.getFlights(query)).nextRefreshAfterMs).toBe(151_000);
     expect(fetchFlights).toHaveBeenCalledTimes(1);
     now += 60_000;
     expect((await service.getFlights(query)).status).toBe('stale');
