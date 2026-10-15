@@ -8,6 +8,7 @@ export interface FlightAdmission {
   reservation?: string;
 }
 export interface FlightBudget {
+  initialize?(nowMs: number): Promise<void>;
   reserve(nowMs: number): Promise<FlightAdmission>;
   complete(reservation: string, nowMs: number, blockedUntil?: number): Promise<void>;
   getState(nowMs: number): QuotaState;
@@ -68,6 +69,10 @@ export class PersistentFlightBudget implements FlightBudget {
   private observed?: Ledger;
   private failedUntil = 0;
   constructor(private readonly store: FlightBudgetStore, private readonly bootstrapExhausted = true) {}
+
+  async initialize(nowMs: number): Promise<void> {
+    await this.update(nowMs, () => undefined);
+  }
 
   async reserve(nowMs: number): Promise<FlightAdmission> {
     return this.update(nowMs, (ledger) => {
