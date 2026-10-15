@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { DailyQuota } from './quota';
 
 describe('DailyQuota', () => {
+  it('does not reset a newer budget when a delayed caller supplies yesterday\'s timestamp', () => {
+    const midnight = Date.UTC(2026, 9, 16);
+    const quota = new DailyQuota(1);
+    expect(quota.tryTake(midnight - 1, 210_000)).toBe(true);
+    expect(quota.tryTake(midnight, 210_000)).toBe(true);
+    expect(quota.getState(midnight - 1)).toMatchObject({ day: '2026-10-16', count: 1 });
+    expect(quota.tryTake(midnight - 1, 210_000)).toBe(false);
+    expect(quota.nextAllowedAt(midnight - 1)).toBe(midnight + 86_400_000);
+  });
+
   it('paces shared admissions without charging denied attempts', () => {
     const quota = new DailyQuota(2);
     const start = Date.UTC(2026, 9, 15);
