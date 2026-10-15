@@ -10,6 +10,29 @@ import { PersistentFlightBudget } from '../lib/flightBudget';
 import type { FlightBudgetSource } from '../lib/flightBudgetConfig';
 
 describe('private provider connections', () => {
+  it('persists the longer paid no-header 429 pause past UTC midnight and a manager restart', async () => {
+    vi.useFakeTimers();
+    const midnight = Date.UTC(2026, 9, 16);
+    vi.setSystemTime(midnight - 3_600_000);
+    const store = new TestBudgetStore();
+    const budgets = () => new PersistentFlightBudget(store, false);
+    const upstream = vi.spyOn(AirplanesLiveProvider.prototype, 'fetchFlights').mockRejectedValue(new ProviderError('rate limited', 429));
+    const a = new Connections(createAtlasDataService(), budgets);
+    const b = new Connections(createAtlasDataService(), budgets);
+    try {
+      const preferences = { flightSource: 'adsbexchange' as const, shipSource: 'fintraffic' as const, rapidApiKey: 'private-key' };
+      const first = a.create(preferences);
+      await a.get(first.token)!.flights.getFlights({ latitude: 35, longitude: 140, radiusNm: 150 });
+      a.close();
+      vi.setSystemTime(midnight + 3_600_000);
+      const next = b.create(preferences);
+      const response = await b.get(next.token)!.flights.getFlights({ latitude: 60, longitude: 25, radiusNm: 100 });
+      expect(response.status).toBe('rate-limited');
+      expect(response.nextRefreshAfterMs).toBe(22 * 3_600_000);
+      expect(upstream).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(store.contents!).blockedUntil).toBe(midnight + 23 * 3_600_000);
+    } finally { a.close(); b.close(); upstream.mockRestore(); vi.useRealTimers(); }
+  });
   it('shares paid cooldown across independent connection managers without sharing keys or provider pools', async () => {
     const stores = new Map<FlightBudgetSource, TestBudgetStore>();
     const budgets = (source: FlightBudgetSource) => {
