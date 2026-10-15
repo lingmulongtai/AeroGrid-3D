@@ -22,7 +22,7 @@ The public beta is designed for non-commercial, low-cost operation without an SL
 - Collapsible sidebar, top-centred search for aircraft, satellites and airports, fullscreen toggle, English and Japanese UI.
 - Live source, coverage, update time, freshness, and failure state are always visible.
 - The last successful aircraft snapshot may be shown as `STALE` for at most five minutes. It is then removed.
-- All live polling stops while the browser tab is hidden. Aircraft auto refresh also pauses after 15 minutes without pointer, key, wheel or touch input; activity or the header's Resume button requests a fresh snapshot. Pausing does not extend the five-minute stale limit.
+- All live polling stops while the browser tab is hidden. Aircraft auto refresh also pauses after 15 minutes without pointer, key, wheel or touch input; activity or the header's Resume button resumes cache requests while respecting provider cooldowns and shared upstream slots. Pausing does not extend the five-minute stale limit.
 - Demo satellites remain simulated; Live Beta uses CelesTrak OMM elements with SGP4 predictions and displays the element epoch. Neither is presented as live telemetry.
 - Aircraft and satellite trails have independent layer switches; station names respect the Labels switch.
 - Cloud volumes stay above the globe at their modelled altitude, including close tilted views. Live cloud heights come from GFS pressure-level forecasts; rainfall comes from RainViewer, with illustrative rain-column heights.
@@ -35,7 +35,7 @@ The public beta is designed for non-commercial, low-cost operation without an SL
 One Node service exposes the same-origin REST API and serves the Vite production bundle. Keyed providers are accessed only from the server; AISStream uses a server WebSocket. Imagery, radar PNGs, official camera images and owner-enabled YouTube embeds remain browser resources.
 
 ```text
-Browser -> Node /api/v1 -> 60 s shared aircraft cache -> adsb.lol / selected provider
+Browser -> Node /api/v1 -> 210 s shared aircraft cache -> adsb.lol / selected provider
                     \-> 10 min weather cache --------> RainViewer
                     \-> 30 min cloud profiles -------> Open-Meteo GFS
                     \-> 2 h persistent OMM cache ----> CelesTrak
@@ -63,13 +63,17 @@ Satellite delivery uses the requested quality limit (300 / 1200 / 2400 / 4200), 
 
 Aircraft requests round the center to a 0.1° grid and round the radius up to the next 5 NM for both upstream requests and shared cache keys. Response coverage and the footer show that normalized radius. Fintraffic ships and cameras retain shared full upstream catalogs (60 seconds / 1 hour), but each API response contains only points within the requested great-circle radius. Requests outside conservative Finnish/Baltic bounds return an empty `reason: outside-coverage` snapshot without contacting Fintraffic; the client also skips those requests and shows Outside coverage. Registered YouTube streams and AISStream are independent of these bounds.
 
-Visible-page polling intervals are 60 seconds for aircraft, weather metadata and ships, 5 minutes for cloud profiles (30-minute server cache), 10 minutes for satellites, and 1 hour for camera catalogs. Returning to the tab issues one request per due layer and resumes its cadence; it does not replay missed polls. This controls API polling, not imagery or video playback. Aircraft's 450-request daily protection and HTTP 429 handling remain unchanged. An actively operated tab has up to 1,440 aircraft polling opportunities/day before cache sharing and the allowance cap; an unattended tab makes about 15 requests from a fresh load, then pauses. A tab hidden all day makes none.
+Aircraft share a 210-second cache and upstream admission interval. The shared budget gates different areas and paid sessions too, so changing area, reconnecting or manually refreshing cannot consume consecutive upstream slots. Flight snapshots include `nextRefreshAt` (UTC) and `nextRefreshAfterMs` (relative to server response time); clients prefer the relative delay to avoid browser clock skew and align with an already-populated cache rather than wait another full interval. A paced request with no usable cached data returns empty items and `reason: budget-paced`; the UI shows Waiting. The existing 450/day cap and provider HTTP 429 cooldown remain enforced; longer Retry-After delays take precedence and survive reconnects.
+
+Visible-page polling is normally 210 seconds for aircraft, 60 seconds for weather metadata and ships, 5 minutes for cloud profiles (30-minute server cache), 10 minutes for satellites, and 1 hour for camera catalogs. Returning to the tab updates due layers once, without replaying missed polls. Idle resume/manual area loading may read the shared cache immediately, while provider cooldowns and upstream admission still apply. An unattended aircraft tab makes about 5 requests before the existing 15-minute pause; a tab hidden all day makes none. API polling controls do not alter imagery or video playback.
+
+At most 412 upstream slots fit in one UTC day per continuously running shared budget, leaving 38 below the 450 cap (previously 1,440 one-minute opportunities). Data still become STALE after one minute and disappear after five minutes from the observation timestamp, including initial provider responses and failed updates. Invalid observation times or timestamps over one minute into the future are rejected. The renderer's existing 150-second prediction cap stays in place, so aircraft can stop moving briefly before the next observation. Simultaneous distant areas compete for the same slots and can have gaps. Counters and pacing remain in process memory: separate regions, server instances and restarts are not coordinated by a persistent global quota.
 
 ## Data sources and limits
 
 | Data | Source | Runtime policy |
 | --- | --- | --- |
-| Live aircraft | [adsb.lol](https://www.adsb.lol/docs/open-data/api/) (ODbL) or selected provider | Server-only, 250 NM maximum, normalized 0.1° / 5 NM coverage, 60-second cache, 1 upstream request/second, 450-request daily soft limit, stop upstream retries after HTTP 429 |
+| Live aircraft | [adsb.lol](https://www.adsb.lol/docs/open-data/api/) (ODbL) or selected provider | Server-only, 250 NM maximum, normalized 0.1° / 5 NM coverage, 210-second shared cache/admission, 450/day cap, provider pacing and HTTP 429 cooldown retained |
 | Live orbit predictions | [CelesTrak OMM](https://celestrak.org/NORAD/documentation/gp-data-formats.php) | Persistent two-hour cache, stop automatic downloads on failure, no synthetic fallback |
 | Cloud profiles | [Open-Meteo GFS](https://open-meteo.com/en/docs/gfs-api) (CC BY 4.0) | Regional nine-point pressure-level forecasts, 30-minute cache, ground-level exclusion |
 | Ships / cameras | [Fintraffic](https://www.digitraffic.fi/en/terms-of-service/) (CC BY 4.0) | Finnish/Baltic bounds plus requested-radius filtering; shared 60-second / 1-hour catalogs, recent vessel reports only, periodic still images |
