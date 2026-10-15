@@ -188,7 +188,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
           : nextUtcDay(failedAt);
       }
       if (!completionAttempted) {
-        try { await quota.complete(admission.reservation!, failedAt, flightProviderBlockedUntil); }
+        try { await quota.complete(admission.reservation!, failedAt, blockedUntil()); }
         catch (storageError) { message = `${message}; ${messageFromError(storageError)}`; }
       }
       flightHealth = {
