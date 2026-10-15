@@ -7,9 +7,10 @@ export function useLivePolling(
   load: (signal: AbortSignal, manual: boolean) => Promise<void>,
   enabled: boolean, intervalMs: number, scope: string, paused = false,
   canPoll: () => boolean = () => true,
+  nextRunAt?: (manual: boolean) => number | undefined,
 ) {
-  const latest = useRef({ load, canPoll });
-  latest.current = { load, canPoll };
+  const latest = useRef({ load, canPoll, nextRunAt });
+  latest.current = { load, canPoll, nextRunAt };
   const clock = useRef<{ scope: string; last?: number }>({ scope });
   const refresh = useRef<() => Promise<void>>(() => Promise.resolve());
   useEffect(() => {
@@ -22,16 +23,18 @@ export function useLivePolling(
       clearTimer();
       if (request) { request.abort(); request = undefined; clock.current.last = previousTime; }
     };
+    const dueAt = (manual = false) => latest.current.nextRunAt?.(manual)
+      ?? (manual ? 0 : (clock.current.last ?? -Infinity) + intervalMs);
     const schedule = () => {
       clearTimer();
       if (!disposed && !paused && pageVisible() && latest.current.canPoll()) {
-        timer = window.setTimeout(() => { void run(); }, Math.max(0, intervalMs - (Date.now() - (clock.current.last ?? -Infinity))));
+        timer = window.setTimeout(() => { void run(); }, Math.max(0, dueAt() - Date.now()));
       }
     };
     const run = async (manual = false) => {
       clearTimer();
       if (disposed || paused || !pageVisible() || !latest.current.canPoll() || request) return;
-      if (!manual && clock.current.last !== undefined && Date.now() - clock.current.last < intervalMs) { schedule(); return; }
+      if (Date.now() < dueAt(manual)) { schedule(); return; }
       const controller = new AbortController();
       previousTime = clock.current.last;
       clock.current.last = Date.now();
