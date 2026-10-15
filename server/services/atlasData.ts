@@ -116,19 +116,21 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
     let admission;
     try { admission = await quota.reserve(nowMs); }
     catch (error) {
-      const quotaState = quota.getState(nowMs);
+      const respondedAt = now();
+      const quotaState = quota.getState(respondedAt);
       flightHealth = { ...flightHealth, status: 'unavailable', message: messageFromError(error), requestCount: quotaState.count, requestLimit: quotaState.limit };
-      return staleFlightSnapshot(key, query, nowMs, messageFromError(error), 'unavailable', 60);
+      return staleFlightSnapshot(key, query, respondedAt, messageFromError(error), 'unavailable', 60);
     }
     if (!admission.allowed) {
-      const quotaState = quota.getState(nowMs);
-      const retryAfterSeconds = Math.ceil((quota.nextAllowedAt(nowMs) - nowMs) / 1000);
+      const respondedAt = now();
+      const quotaState = quota.getState(respondedAt);
+      const retryAfterSeconds = Math.ceil((quota.nextAllowedAt(respondedAt) - respondedAt) / 1000);
       flightHealth = { ...flightHealth, requestCount: quotaState.count, requestLimit: quotaState.limit };
-      if (nowMs < blockedUntil()) {
-        return staleFlightSnapshot(key, query, nowMs, 'Flight provider retry is paused after HTTP 429', 'rate-limited', retryAfterSeconds);
+      if (respondedAt < blockedUntil()) {
+        return staleFlightSnapshot(key, query, respondedAt, 'Flight provider retry is paused after HTTP 429', 'rate-limited', retryAfterSeconds);
       }
       if (quotaState.count < quotaState.limit) {
-        return staleFlightSnapshot(key, query, nowMs, 'Shared aircraft update scheduled to protect the daily allowance', 'unavailable', retryAfterSeconds, 'budget-paced');
+        return staleFlightSnapshot(key, query, respondedAt, 'Shared aircraft update scheduled to protect the daily allowance', 'unavailable', retryAfterSeconds, 'budget-paced');
       }
       const message = 'Daily Live Beta request budget is exhausted';
       flightHealth = {
@@ -139,7 +141,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
         requestCount: quotaState.count,
         requestLimit: quotaState.limit,
       };
-      return staleFlightSnapshot(key, query, nowMs, message, 'rate-limited', retryAfterSeconds);
+      return staleFlightSnapshot(key, query, respondedAt, message, 'rate-limited', retryAfterSeconds);
     }
 
     let completionAttempted = false;
@@ -150,10 +152,12 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
         throw new ProviderError('Flight provider returned an invalid observation time');
       }
       const generatedAt = new Date(result.generatedAtMs).toISOString();
-      const status = statusForAge(generatedAt, completedAt);
-      if (status === 'unavailable') throw new ProviderError('Flight provider observation is more than five minutes old');
+      if (statusForAge(generatedAt, completedAt) === 'unavailable') throw new ProviderError('Flight provider observation is more than five minutes old');
       completionAttempted = true;
       await quota.complete(admission.reservation!, completedAt);
+      const respondedAt = now();
+      const status = statusForAge(generatedAt, respondedAt);
+      if (status === 'unavailable') throw new ProviderError('Flight provider observation is more than five minutes old');
       const snapshot: DataSnapshot<FlightRecord> = scheduled({
         mode: 'live-beta',
         source: flightSource,
@@ -166,9 +170,9 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
           radiusNm: query.radiusNm,
         },
         items: result.items,
-      }, completedAt);
+      }, respondedAt);
       flightCache.set(key, snapshot, FLIGHT_CACHE_TTL_MS, nowMs);
-      const quotaState = quota.getState(completedAt);
+      const quotaState = quota.getState(respondedAt);
       flightHealth = {
         status,
         source: flightSource,
@@ -199,7 +203,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
         requestCount: quota.getState(failedAt).count,
         requestLimit: quota.getState(failedAt).limit,
       };
-      return staleFlightSnapshot(key, query, failedAt, message, sourceStatus, retryAfterSeconds);
+      return staleFlightSnapshot(key, query, now(), message, sourceStatus, retryAfterSeconds);
     }
   }
 
