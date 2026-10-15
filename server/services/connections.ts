@@ -34,7 +34,7 @@ export class Connections {
     const token = randomBytes(32).toString('hex');
     const expiresAt = Date.now() + SESSION_MS;
     const privateProvider = preferences.flightSource === 'adsbexchange' ? new AirplanesLiveProvider(fetch, Date.now, undefined, { source: 'adsbexchange', apiKey: preferences.rapidApiKey }) : undefined;
-    const flights = privateProvider ? createAtlasDataService({ flightProvider: { fetchFlights: (lat, lon, radius) => this.paidRequest(privateProvider, lat, lon, radius) }, flightSource: 'adsbexchange', quota: this.paidQuota }) : preferences.flightSource === 'airplanes.live' ? this.legacyFlights : this.freeFlights;
+    const flights = privateProvider ? createAtlasDataService({ flightProvider: { fetchFlights: (lat, lon, radius) => this.paidRequest(privateProvider, lat, lon, radius) }, flightSource: 'adsbexchange', quota: this.paidQuota, providerBlockedUntil: () => this.paidBlockedUntil }) : preferences.flightSource === 'airplanes.live' ? this.legacyFlights : this.freeFlights;
     this.sessions.set(token, { preferences, expiresAt, flights, privateProvider, ships: new Map(), connected: false });
     const timer = setTimeout(() => this.remove(token), SESSION_MS);
     timer.unref();
