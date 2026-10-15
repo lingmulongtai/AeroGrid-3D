@@ -9,6 +9,7 @@ import type {
 import { APP_VERSION, LIVE_FLIGHT_REFRESH_MS, LIVE_STALE_AFTER_MS, LIVE_UNAVAILABLE_AFTER_MS, statusForAge } from '../../shared/contracts.js';
 import { ExpiringCache } from '../lib/cache.js';
 import { DailyQuota } from '../lib/quota.js';
+import { LocalFlightBudget, type FlightBudget } from '../lib/flightBudget.js';
 import { AirplanesLiveProvider } from '../providers/airplanesLive.js';
 import { ProviderError } from '../providers/errors.js';
 import { RainViewerProvider } from '../providers/rainViewer.js';
@@ -34,6 +35,7 @@ interface AtlasDataDependencies {
   flightProvider?: Pick<AirplanesLiveProvider, 'fetchFlights'>;
   weatherProvider?: Pick<RainViewerProvider, 'fetchWeather'>;
   quota?: DailyQuota;
+  budget?: FlightBudget;
   now?: () => number;
   revision?: string;
   flightSource?: string;
@@ -71,7 +73,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
   const flightProvider = dependencies.flightProvider ?? new AirplanesLiveProvider(fetch, Date.now, undefined, { source: 'adsb.lol' });
   const flightSource = dependencies.flightSource ?? (dependencies.flightProvider ? 'airplanes.live' : 'adsb.lol');
   const weatherProvider = dependencies.weatherProvider ?? new RainViewerProvider();
-  const quota = dependencies.quota ?? new DailyQuota(DAILY_FLIGHT_REQUEST_LIMIT);
+  const quota = dependencies.budget ?? new LocalFlightBudget(dependencies.quota ?? new DailyQuota(DAILY_FLIGHT_REQUEST_LIMIT));
   const now = dependencies.now ?? Date.now;
   const revision = dependencies.revision;
   const flightCache = new ExpiringCache<DataSnapshot<FlightRecord>>();
@@ -81,7 +83,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
   let flightHealth = initialHealth(flightSource);
   let weatherHealth = initialHealth('rainviewer');
   let flightProviderBlockedUntil = 0;
-  const blockedUntil = () => Math.max(flightProviderBlockedUntil, dependencies.providerBlockedUntil?.() ?? 0);
+  const blockedUntil = () => Math.max(flightProviderBlockedUntil, quota.blockedUntil(), dependencies.providerBlockedUntil?.() ?? 0);
 
   async function getFlights(query: FlightQuery): Promise<DataSnapshot<FlightRecord>> {
     query = normalizeFlightQuery(query);
@@ -111,9 +113,20 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
       return staleFlightSnapshot(key, query, nowMs, 'Flight provider retry is paused after HTTP 429', 'rate-limited', retryAfterSeconds);
     }
 
-    if (!quota.tryTake(nowMs, LIVE_FLIGHT_REFRESH_MS)) {
+    let admission;
+    try { admission = await quota.reserve(nowMs); }
+    catch (error) {
+      const quotaState = quota.getState(nowMs);
+      flightHealth = { ...flightHealth, status: 'unavailable', message: messageFromError(error), requestCount: quotaState.count, requestLimit: quotaState.limit };
+      return staleFlightSnapshot(key, query, nowMs, messageFromError(error), 'unavailable', 60);
+    }
+    if (!admission.allowed) {
       const quotaState = quota.getState(nowMs);
       const retryAfterSeconds = Math.ceil((quota.nextAllowedAt(nowMs) - nowMs) / 1000);
+      flightHealth = { ...flightHealth, requestCount: quotaState.count, requestLimit: quotaState.limit };
+      if (nowMs < blockedUntil()) {
+        return staleFlightSnapshot(key, query, nowMs, 'Flight provider retry is paused after HTTP 429', 'rate-limited', retryAfterSeconds);
+      }
       if (quotaState.count < quotaState.limit) {
         return staleFlightSnapshot(key, query, nowMs, 'Shared aircraft update scheduled to protect the daily allowance', 'unavailable', retryAfterSeconds, 'budget-paced');
       }
@@ -129,6 +142,7 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
       return staleFlightSnapshot(key, query, nowMs, message, 'rate-limited', retryAfterSeconds);
     }
 
+    let completionAttempted = false;
     try {
       const result = await flightProvider.fetchFlights(query.latitude, query.longitude, query.radiusNm);
       const completedAt = now();
@@ -138,6 +152,8 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
       const generatedAt = new Date(result.generatedAtMs).toISOString();
       const status = statusForAge(generatedAt, completedAt);
       if (status === 'unavailable') throw new ProviderError('Flight provider observation is more than five minutes old');
+      completionAttempted = true;
+      await quota.complete(admission.reservation!, completedAt);
       const snapshot: DataSnapshot<FlightRecord> = scheduled({
         mode: 'live-beta',
         source: flightSource,
@@ -164,12 +180,16 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
     } catch (error) {
       const failedAt = now();
       const sourceStatus = statusFromError(error);
-      const message = messageFromError(error);
+      let message = messageFromError(error);
       const retryAfterSeconds = error instanceof ProviderError ? error.retryAfterSeconds : undefined;
       if (sourceStatus === 'rate-limited') {
         flightProviderBlockedUntil = retryAfterSeconds
           ? failedAt + Math.max(1, retryAfterSeconds) * 1_000
           : nextUtcDay(failedAt);
+      }
+      if (!completionAttempted) {
+        try { await quota.complete(admission.reservation!, failedAt, flightProviderBlockedUntil); }
+        catch (storageError) { message = `${message}; ${messageFromError(storageError)}`; }
       }
       flightHealth = {
         status: sourceStatus,
