@@ -119,7 +119,9 @@ export function useAtlasData({
         throw new Error('The Live Beta endpoint returned an invalid data contract');
       }
       const receivedAt = Date.now();
-      const nextAt = Date.parse(snapshot.nextRefreshAt ?? '');
+      // Relative hints avoid early polls when the browser clock is ahead of UTC.
+      const delay = snapshot.nextRefreshAfterMs;
+      const nextAt = Number.isFinite(delay) && delay! >= 0 ? receivedAt + delay! : Date.parse(snapshot.nextRefreshAt ?? '');
       flightSchedule.current = Number.isFinite(nextAt) && nextAt > receivedAt ? { scope: flightScope, at: nextAt } : undefined;
       // Cooldowns survive area changes and reconnect/resume intent. Local pacing
       // still permits manual cache reads; the server protects upstream admission.

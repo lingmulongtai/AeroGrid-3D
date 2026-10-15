@@ -15,6 +15,20 @@ afterEach(() => {
 });
 
 describe('useAtlasData', () => {
+  it('keeps the server cadence when the browser clock is one minute ahead', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 9, 15) + 60_000);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      const serverNow = Date.now() - 60_000;
+      return Response.json({ mode: 'live-beta', source: 'adsb.lol', status: 'available', generatedAt: new Date(serverNow).toISOString(), expiresAt: new Date(serverNow + 210_000).toISOString(), nextRefreshAt: new Date(serverNow + 210_000).toISOString(), nextRefreshAfterMs: 210_000, coverage, items: [] });
+    });
+    renderHook(() => useAtlasData({ mode: 'live-beta', coverage, flightsEnabled: true, weatherEnabled: false, demoFlightCount: 12, refreshToken: 0 }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(209_999); });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('polls an actively operated day 412 times and keeps one-minute freshness separate', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.UTC(2026, 9, 15));

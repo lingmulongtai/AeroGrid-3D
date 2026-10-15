@@ -186,7 +186,9 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
   function scheduled(snapshot: DataSnapshot<FlightRecord>, nowMs: number): DataSnapshot<FlightRecord> {
     const next = Math.max(quota.nextAllowedAt(nowMs), blockedUntil(), Date.parse(snapshot.expiresAt));
     const nextRefreshAt = new Date(next).toISOString();
-    return snapshot.nextRefreshAt === nextRefreshAt ? snapshot : { ...snapshot, nextRefreshAt };
+    const nextRefreshAfterMs = Math.max(0, next - nowMs);
+    return snapshot.nextRefreshAt === nextRefreshAt && snapshot.nextRefreshAfterMs === nextRefreshAfterMs
+      ? snapshot : { ...snapshot, nextRefreshAt, nextRefreshAfterMs };
   }
 
   function staleFlightSnapshot(
