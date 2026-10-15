@@ -14,6 +14,38 @@ const flight: FlightRecord = {
 };
 
 describe('AtlasDataService', () => {
+  it.each(['success', 'failure'] as const)('keeps the new UTC budget when yesterday\'s request finishes with %s', async (outcome) => {
+    const midnight = Date.UTC(2026, 9, 16);
+    let now = midnight - 1;
+    let resolve!: (value: { items: FlightRecord[]; generatedAtMs: number }) => void;
+    let reject!: (error: Error) => void;
+    const pending = new Promise<{ items: FlightRecord[]; generatedAtMs: number }>((yes, no) => { resolve = yes; reject = no; });
+    const fetchFlights = vi.fn().mockReturnValueOnce(pending).mockImplementation(async () => ({ items: [flight], generatedAtMs: now }));
+    const quota = new DailyQuota(450);
+    const service = createAtlasDataService({ flightProvider: { fetchFlights }, quota, now: () => now });
+    const oldRequest = service.getFlights(query);
+    now = midnight;
+    await service.getFlights({ ...query, latitude: 50 });
+    if (outcome === 'success') resolve({ items: [flight], generatedAtMs: midnight - 1 });
+    else reject(new ProviderError('offline', 503));
+    await oldRequest;
+    expect(quota.getState(now)).toMatchObject({ day: '2026-10-16', count: 1 });
+    expect((await service.getFlights({ ...query, latitude: 40 })).reason).toBe('budget-paced');
+    expect(fetchFlights).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [60_000, 'available'], [60_001, 'stale'], [300_000, 'stale'], [300_001, 'unavailable'],
+    [-60_000, 'available'], [-60_001, 'unavailable'], [NaN, 'unavailable'],
+  ] as const)('validates a new provider observation age of %s ms as %s', async (age, status) => {
+    const now = Date.UTC(2026, 9, 15);
+    const service = createAtlasDataService({ flightProvider: { fetchFlights: vi.fn(async () => ({ items: [flight], generatedAtMs: now - age })) }, now: () => now });
+    const result = await service.getFlights(query);
+    expect(result.status).toBe(status);
+    expect(result.items).toEqual(status === 'unavailable' ? [] : [flight]);
+    expect(service.getStatus().sources.flights.status).toBe(status);
+  });
+
   it('keeps a full UTC day of rotating areas and shared sessions below 450 upstream calls', async () => {
     const start = Date.UTC(2026, 9, 15);
     let now = start;
