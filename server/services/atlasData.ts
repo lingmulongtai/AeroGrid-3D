@@ -146,6 +146,14 @@ export function createAtlasDataService(dependencies: AtlasDataDependencies = {})
 
     let completionAttempted = false;
     try {
+      const admittedAt = now();
+      if (new Date(admittedAt).toISOString().slice(0, 10) !== quota.getState(admittedAt).day) {
+        // A slow reservation can cross UTC midnight. Do not spend yesterday's
+        // reservation on today's upstream request; release it without fetching.
+        completionAttempted = true;
+        await quota.complete(admission.reservation!, admittedAt);
+        return staleFlightSnapshot(key, query, now(), 'Shared aircraft update scheduled to protect the daily allowance', 'unavailable', undefined, 'budget-paced');
+      }
       const result = await flightProvider.fetchFlights(query.latitude, query.longitude, query.radiusNm);
       const completedAt = now();
       if (!Number.isFinite(result.generatedAtMs) || result.generatedAtMs > completedAt + LIVE_STALE_AFTER_MS) {

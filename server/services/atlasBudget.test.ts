@@ -16,6 +16,19 @@ function fixture() {
   return { store, fetchFlights, service, advance: (ms: number) => { now += ms; } };
 }
 describe('durable aircraft admission through independent services', () => {
+  it('does not use yesterday\'s reservation if storage completes after UTC midnight', async () => {
+    const f = fixture();
+    f.advance(86_399_000);
+    const write = f.store.compareAndSwap.bind(f.store);
+    vi.spyOn(f.store, 'compareAndSwap').mockImplementationOnce(async (...args) => { await write(...args); f.advance(2_000); });
+    expect((await f.service().getFlights(query)).reason).toBe('budget-paced');
+    expect(f.fetchFlights).not.toHaveBeenCalled();
+    expect(JSON.parse(f.store.contents!)).toMatchObject({ day: '2026-10-16', count: 0, pending: null });
+    f.advance(210_000);
+    await f.service().getFlights(query);
+    expect(f.fetchFlights).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(f.store.contents!).count).toBe(1);
+  });
   it('expires a new observation if completion storage crosses the five-minute boundary', async () => {
     const f = fixture();
     f.fetchFlights.mockImplementation(async () => ({ items: [{ id: 'expired' } as any], generatedAtMs: start - 299_000 }));
