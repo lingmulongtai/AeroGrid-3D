@@ -6,6 +6,8 @@ import { AirplanesLiveProvider } from '../providers/airplanesLive.js';
 import { createAtlasDataService, type AtlasDataService, type FlightQuery } from './atlasData.js';
 import { DailyQuota } from '../lib/quota.js';
 import { ProviderError } from '../providers/errors.js';
+import { LocalFlightBudget, type FlightBudget } from '../lib/flightBudget.js';
+import type { FlightBudgetSource } from '../lib/flightBudgetConfig.js';
 
 const SESSION_MS = 60 * 60_000;
 interface Connection {
@@ -21,12 +23,15 @@ interface Connection {
 }
 export class Connections {
   private sessions = new Map<string, Connection>();
-  private readonly paidQuota = new DailyQuota(450);
+  private readonly paidBudget: FlightBudget;
   private paidQueue: Promise<void> = Promise.resolve();
   private nextPaidRequestAt = 0;
   private paidBlockedUntil = 0;
-  private readonly legacyFlights = createAtlasDataService({ flightProvider: new AirplanesLiveProvider(), flightSource: 'airplanes.live' });
-  constructor(private readonly freeFlights: AtlasDataService = createAtlasDataService()) {}
+  private readonly legacyFlights: AtlasDataService;
+  constructor(private readonly freeFlights: AtlasDataService = createAtlasDataService(), budgets?: (source: FlightBudgetSource) => FlightBudget) {
+    this.paidBudget = budgets?.('adsbexchange') ?? new LocalFlightBudget(new DailyQuota(450));
+    this.legacyFlights = createAtlasDataService({ flightProvider: new AirplanesLiveProvider(), flightSource: 'airplanes.live', budget: budgets?.('airplanes.live') });
+  }
   create(input: ConnectionPreferences) {
     const preferences = { ...input };
     this.sweep();
@@ -34,7 +39,7 @@ export class Connections {
     const token = randomBytes(32).toString('hex');
     const expiresAt = Date.now() + SESSION_MS;
     const privateProvider = preferences.flightSource === 'adsbexchange' ? new AirplanesLiveProvider(fetch, Date.now, undefined, { source: 'adsbexchange', apiKey: preferences.rapidApiKey }) : undefined;
-    const flights = privateProvider ? createAtlasDataService({ flightProvider: { fetchFlights: (lat, lon, radius) => this.paidRequest(privateProvider, lat, lon, radius) }, flightSource: 'adsbexchange', quota: this.paidQuota, providerBlockedUntil: () => this.paidBlockedUntil }) : preferences.flightSource === 'airplanes.live' ? this.legacyFlights : this.freeFlights;
+    const flights = privateProvider ? createAtlasDataService({ flightProvider: { fetchFlights: (lat, lon, radius) => this.paidRequest(privateProvider, lat, lon, radius) }, flightSource: 'adsbexchange', budget: this.paidBudget, providerBlockedUntil: () => this.paidBlockedUntil }) : preferences.flightSource === 'airplanes.live' ? this.legacyFlights : this.freeFlights;
     this.sessions.set(token, { preferences, expiresAt, flights, privateProvider, ships: new Map(), connected: false });
     const timer = setTimeout(() => this.remove(token), SESSION_MS);
     timer.unref();
