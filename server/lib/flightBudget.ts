@@ -85,6 +85,9 @@ export class PersistentFlightBudget implements FlightBudget {
       // An obsolete completion must never clear another attempt's latch.
       if (ledger.pending !== reservation) throw new Error('Aircraft budget reservation mismatch');
       ledger.blockedUntil = Math.max(ledger.blockedUntil, blockedUntil);
+      // Storage admission can take time. Space actual provider attempts by at
+      // least 210s from completion, rather than an old pre-I/O admission time.
+      ledger.nextRequestAt = Math.max(ledger.nextRequestAt, nowMs + LIVE_FLIGHT_REFRESH_MS);
       ledger.pending = null;
     });
   }
