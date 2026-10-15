@@ -6,12 +6,13 @@ import type {
   RadiusCoverage,
   WeatherFrame,
 } from '../../shared/contracts';
+import { LIVE_FLIGHT_REFRESH_MS, LIVE_STALE_AFTER_MS } from '../../shared/contracts';
 import { calculateFlightStats, generateRealisticDemoFlights, type FlightStats } from './useFlightData';
 import { connectionHeaders, readConnection } from '../data/connections';
 import { useLivePolling } from './useLivePolling';
 import { useAircraftIdle } from './useAircraftIdle';
 
-const LIVE_REFRESH_MS = 60_000;
+const WEATHER_REFRESH_MS = 60_000;
 const DEMO_REFRESH_MS = 20_000;
 const CLIENT_STALE_WINDOW_MS = 5 * 60_000;
 
@@ -79,6 +80,10 @@ export function useAtlasData({
   const lastGoodLiveRef = useRef<DataSnapshot<FlightRecord> | null>(null);
   const flightRequestRef = useRef<AbortSignal | undefined>(undefined);
   const activity = useAircraftIdle(mode === 'live-beta' && flightsEnabled);
+  const provider = readConnection()?.flightSource ?? 'adsb.lol';
+  const flightScope = `${provider}:${coverage.center.latitude}:${coverage.center.longitude}:${coverage.radiusNm}:${refreshToken}:${activity.resumeToken}`;
+  const flightSchedule = useRef<{ scope: string; at: number } | undefined>(undefined);
+  const providerCooldowns = useRef(new Map<string, number>());
   const [, setAgeClock] = useState(Date.now);
   useEffect(() => {
     if (mode !== 'live-beta') return;
@@ -88,7 +93,7 @@ export function useAtlasData({
       window.clearTimeout(timer);
       const now = Date.now();
       setAgeClock(now);
-      const next = [generated + LIVE_REFRESH_MS + 1, generated + CLIENT_STALE_WINDOW_MS + 1].find((time) => time > now);
+      const next = [generated + LIVE_STALE_AFTER_MS + 1, generated + CLIENT_STALE_WINDOW_MS + 1].find((time) => time > now);
       if (next !== undefined) timer = window.setTimeout(updateAge, next - now);
     };
     updateAge();
@@ -113,11 +118,20 @@ export function useAtlasData({
       if (snapshot.mode !== 'live-beta' || snapshot.source === 'demo' || !Array.isArray(snapshot.items)) {
         throw new Error('The Live Beta endpoint returned an invalid data contract');
       }
+      const receivedAt = Date.now();
+      const nextAt = Date.parse(snapshot.nextRefreshAt ?? '');
+      flightSchedule.current = Number.isFinite(nextAt) && nextAt > receivedAt ? { scope: flightScope, at: nextAt } : undefined;
+      // Cooldowns survive area changes and reconnect/resume intent. Local pacing
+      // still permits manual cache reads; the server protects upstream admission.
+      if (Number.isFinite(snapshot.retryAfterSeconds) && snapshot.retryAfterSeconds! > 0 && snapshot.reason !== 'budget-paced') {
+        providerCooldowns.current.set(provider, Math.max(nextAt || 0, receivedAt + snapshot.retryAfterSeconds! * 1000));
+      }
       const next = { ...snapshot, items: mergePositionHistory(snapshot.items, historyRef.current) };
       if (next.status === 'available' || next.status === 'stale') lastGoodLiveRef.current = next;
       setFlightSnapshot(next);
     } catch (error) {
       if (signal?.aborted || (error as Error).name === 'AbortError') return;
+      flightSchedule.current = undefined;
       const previous = lastGoodLiveRef.current;
       const previousAge = previous ? Date.now() - Date.parse(previous.generatedAt) : Number.POSITIVE_INFINITY;
       if (previous && previousAge <= CLIENT_STALE_WINDOW_MS) {
@@ -132,7 +146,7 @@ export function useAtlasData({
     } finally {
       if (flightRequestRef.current === signal) setLoading(false);
     }
-  }, [coverage, flightsEnabled, mode]);
+  }, [coverage, flightsEnabled, mode, provider, flightScope]);
 
   const loadWeather = useCallback(async (signal?: AbortSignal, forceRefresh = false) => {
     if (mode !== 'live-beta' || !weatherEnabled) return;
@@ -157,10 +171,13 @@ export function useAtlasData({
     historyRef.current.clear();
     lastGoodLiveRef.current = null;
     if (mode === 'live-beta') {
-      setFlightSnapshot({ ...emptySnapshot<FlightRecord>('live-beta', readConnection()?.flightSource ?? 'adsb.lol'), coverage });
+      const blocked = providerCooldowns.current.get(provider) ?? 0;
+      setFlightSnapshot({ ...emptySnapshot<FlightRecord>('live-beta', provider), coverage,
+        ...(blocked > Date.now() ? { status: 'rate-limited', nextRefreshAt: new Date(blocked).toISOString() } : {}),
+      });
       setLoading(false);
     }
-  }, [mode, coverage.center.latitude, coverage.center.longitude, coverage.radiusNm, refreshToken, flightsEnabled]);
+  }, [mode, coverage.center.latitude, coverage.center.longitude, coverage.radiusNm, refreshToken, flightsEnabled, provider]);
 
   useEffect(() => {
     if (mode === 'live-beta') setWeatherSnapshot(emptySnapshot<WeatherFrame>('live-beta', 'rainviewer'));
@@ -190,14 +207,17 @@ export function useAtlasData({
 
   }, [demoFlightCount, flightsEnabled, mode, weatherEnabled]);
 
-  const flightScope = `${coverage.center.latitude}:${coverage.center.longitude}:${coverage.radiusNm}:${refreshToken}:${activity.resumeToken}`;
-  useLivePolling(loadLiveFlights, mode === 'live-beta' && flightsEnabled, LIVE_REFRESH_MS, flightScope, activity.paused, () => !activity.isIdle());
-  const refreshWeather = useLivePolling(loadWeather, mode === 'live-beta' && weatherEnabled, LIVE_REFRESH_MS, String(refreshToken));
+  useLivePolling(loadLiveFlights, mode === 'live-beta' && flightsEnabled, LIVE_FLIGHT_REFRESH_MS, flightScope, activity.paused, () => !activity.isIdle(), (manual) => {
+    const blocked = providerCooldowns.current.get(provider) ?? 0;
+    if (blocked > Date.now()) return blocked;
+    return !manual && flightSchedule.current?.scope === flightScope ? flightSchedule.current.at : undefined;
+  });
+  const refreshWeather = useLivePolling(loadWeather, mode === 'live-beta' && weatherEnabled, WEATHER_REFRESH_MS, String(refreshToken));
 
   const baseSnapshot = flightSnapshot.mode === mode || !mode ? flightSnapshot : emptySnapshot<FlightRecord>(mode, mode === 'demo' ? 'demo' : readConnection()?.flightSource ?? 'adsb.lol');
   const age = Date.now() - Date.parse(baseSnapshot.generatedAt);
   const phase = mode === 'live-beta' && (baseSnapshot.status === 'available' || baseSnapshot.status === 'stale')
-    ? age > CLIENT_STALE_WINDOW_MS ? 'expired' : age > LIVE_REFRESH_MS ? 'stale' : 'fresh' : 'fresh';
+    ? age > CLIENT_STALE_WINDOW_MS ? 'expired' : age > LIVE_STALE_AFTER_MS ? 'stale' : 'fresh' : 'fresh';
   const visibleFlightSnapshot = useMemo<DataSnapshot<FlightRecord>>(() => phase === 'expired' ? { ...baseSnapshot, status: 'unavailable', items: [] }
     : phase === 'stale' ? { ...baseSnapshot, status: 'stale' } : baseSnapshot, [baseSnapshot, phase]);
   const flightStats = calculateFlightStats(
