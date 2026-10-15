@@ -8,6 +8,31 @@ function visibility(value: DocumentVisibilityState) {
 }
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 describe('visibility-aware live polling', () => {
+  it('aligns polls with an absolute server deadline instead of adding a full local interval', async () => {
+    vi.useFakeTimers(); visibility('visible');
+    let next: number | undefined;
+    const load = vi.fn(async () => { next = Date.now() + 110_000; });
+    renderHook(() => useLivePolling(load, true, 210_000, 'area', false, () => true, () => next));
+    await act(async () => {});
+    await act(async () => { await vi.advanceTimersByTimeAsync(109_999); });
+    expect(load).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a provider deadline across scope changes, manual refreshes and visibility changes', async () => {
+    vi.useFakeTimers(); visibility('visible');
+    const blockedUntil = Date.now() + 3_600_000;
+    const load = vi.fn(async () => {});
+    const deadline = () => Date.now() < blockedUntil ? blockedUntil : undefined;
+    const { result, rerender } = renderHook(({ scope }) => useLivePolling(load, true, 210_000, scope, false, () => true, deadline), { initialProps: { scope: 'first' } });
+    rerender({ scope: 'second' });
+    await act(async () => { await result.current(); visibility('hidden'); await vi.advanceTimersByTimeAsync(600_000); visibility('visible'); });
+    expect(load).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000_000); });
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
   it('does not load while initially hidden and loads once on return without catch-up', async () => {
     vi.useFakeTimers(); visibility('hidden');
     const load = vi.fn(async () => {});

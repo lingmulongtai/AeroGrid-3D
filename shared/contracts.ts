@@ -35,7 +35,9 @@ export interface DataSnapshot<T> {
   items: T[];
   message?: string;
   retryAfterSeconds?: number;
-  reason?: 'outside-coverage';
+  nextRefreshAt?: string;
+  nextRefreshAfterMs?: number;
+  reason?: 'outside-coverage' | 'budget-paced';
 }
 
 export interface FlightRecord {
@@ -84,6 +86,8 @@ export interface AtlasStatus {
 
 export const LIVE_STALE_AFTER_MS = 60_000;
 export const LIVE_UNAVAILABLE_AFTER_MS = 5 * 60_000;
+// 412 upstream slots per UTC day, leaving 38 below the existing 450 cap.
+export const LIVE_FLIGHT_REFRESH_MS = 210_000;
 
 export function statusForAge(
   generatedAt: string,

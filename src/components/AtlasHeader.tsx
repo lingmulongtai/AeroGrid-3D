@@ -25,13 +25,14 @@ export function AtlasHeader({ mode, snapshot, count, loading, locale, t, autoRef
   const updated = new Intl.DateTimeFormat(locale === 'ja' ? 'ja-JP' : 'en-US', {
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC',
   }).format(new Date(snapshot.generatedAt));
+  const budgetWaiting = mode === 'live-beta' && snapshot.reason === 'budget-paced';
 
   return (
-    <header className="source-status" data-status={snapshot.status}>
+    <header className="source-status" data-status={budgetWaiting ? 'rate-limited' : snapshot.status}>
       <div className="source-status-summary">
         <span className="mode-badge">{mode === 'demo' ? t('mode.demo') : t('mode.live')}</span>
         <span className="status-indicator" aria-hidden="true" />
-        <span className="status-label">{mode === 'demo' ? t('mode.demo') : t(STATUS_KEYS[snapshot.status])}</span>
+        <span className="status-label">{mode === 'demo' ? t('mode.demo') : budgetWaiting ? t('status.budget-paced') : t(STATUS_KEYS[snapshot.status])}</span>
         <span className="status-divider" />
         <span className="status-count"><Radio aria-hidden="true" /> {count.toLocaleString(locale)} </span>
         <span className="status-time">{t('status.updated', { value: `${updated} UTC` })}</span>

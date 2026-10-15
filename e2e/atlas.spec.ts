@@ -189,6 +189,41 @@ test('outside Fintraffic coverage skips regional requests and retains user strea
   await expectHealthyPage(page);
 });
 
+test('aircraft follow the shared update deadline while showing stale and waiting states', async ({ page }, testInfo) => {
+  await page.clock.install();
+  let requests = 0, nextUpdate = 0;
+  await page.route('**/api/v1/flights?**', async (route) => {
+    const now = await page.evaluate(() => Date.now());
+    requests++; nextUpdate = now + 210_000;
+    return route.fulfill({ json: {
+      mode: 'live-beta', source: 'adsb.lol', status: requests === 2 ? 'unavailable' : 'available',
+      ...(requests === 2 ? { reason: 'budget-paced', retryAfterSeconds: 210 } : {}),
+      generatedAt: new Date(now).toISOString(), expiresAt: new Date(nextUpdate).toISOString(), nextRefreshAt: new Date(nextUpdate).toISOString(), coverage: { kind: 'global' }, items: [],
+    } });
+  });
+  await page.route('**/api/v1/weather**', (route) => route.fulfill({ json: { mode: 'live-beta', source: 'rainviewer', status: 'unavailable', generatedAt: new Date().toISOString(), expiresAt: new Date().toISOString(), coverage: { kind: 'global' }, items: [] } }));
+  await page.goto('/');
+  await page.getByRole('button', { name: /Live Beta/ }).click();
+  await expect.poll(() => requests).toBe(1);
+  await expect(page.locator('.source-status')).toHaveAttribute('data-status', 'available');
+  // Freeze elapsed wall time after startup; skip rendered frames for long waits.
+  await page.clock.pauseAt(new Date(nextUpdate - 120_000));
+  await page.clock.fastForward(60_001);
+  await expect(page.locator('.source-status')).toHaveAttribute('data-status', 'stale');
+  expect(requests).toBe(1);
+  await page.clock.fastForward(nextUpdate - await page.evaluate(() => Date.now()) - 1);
+  expect(requests).toBe(1);
+  await page.clock.fastForward(1);
+  await expect.poll(() => requests).toBe(2);
+  await expect(page.locator('.status-label')).toHaveText('Waiting');
+  await expect(page.locator('.atlas-footer')).toContainText('Waiting for the next shared update');
+  await expectHealthyPage(page);
+  await page.screenshot({ path: testInfo.outputPath('aircraft-budget-waiting.png'), animations: 'disabled' });
+  await page.clock.fastForward(nextUpdate - await page.evaluate(() => Date.now()));
+  await expect.poll(() => requests).toBe(3);
+  await expect(page.locator('.source-status')).toHaveAttribute('data-status', 'available');
+});
+
 test('idle aircraft pause stays visible and resumes from the header', async ({ page, isMobile }, testInfo) => {
   await page.clock.install();
   let flightRequests = 0;
