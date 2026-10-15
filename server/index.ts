@@ -11,6 +11,14 @@ const projectRoot = process.cwd();
 const budgets = createFlightBudgets();
 const dataService = createAtlasDataService({ revision: REVISION, budget: budgets('adsb.lol') });
 const connections = new Connections(dataService, budgets);
+// Initialize every pool on migration day, including optional providers which
+// may first be selected tomorrow. Never reserve/charge a slot during startup.
+for (const source of ['adsb.lol', 'airplanes.live', 'adsbexchange'] as const) {
+  void budgets(source).initialize?.(Date.now()).then(
+    () => console.log(JSON.stringify({ level: 'info', event: 'aircraft.budget.ready', source })),
+    () => console.error(JSON.stringify({ level: 'error', event: 'aircraft.budget.unavailable', source })),
+  );
+}
 const app = createApp({
   connections,
   dataService,

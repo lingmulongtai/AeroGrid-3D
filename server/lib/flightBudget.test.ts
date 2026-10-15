@@ -7,6 +7,14 @@ import { PersistentFlightBudget } from './flightBudget';
 const start = Date.UTC(2026, 9, 15);
 const budget = (store: TestBudgetStore) => new PersistentFlightBudget(store, false);
 describe('persistent aircraft budget', () => {
+  it('initializes optional provider pools on migration day without reserving a request on restart', async () => {
+    const store = new TestBudgetStore();
+    await new PersistentFlightBudget(store).initialize(start);
+    expect(JSON.parse(store.contents!)).toMatchObject({ count: 450, pending: null });
+    await new PersistentFlightBudget(store).initialize(start + 86_400_000);
+    expect(JSON.parse(store.contents!)).toMatchObject({ day: '2026-10-16', count: 0, pending: null });
+    expect((await new PersistentFlightBudget(store).reserve(start + 86_400_000)).allowed).toBe(true);
+  });
   it('admits exactly one simultaneous request across independent clients', async () => {
     const store = new TestBudgetStore();
     const clients = Array.from({ length: 20 }, () => budget(store));
