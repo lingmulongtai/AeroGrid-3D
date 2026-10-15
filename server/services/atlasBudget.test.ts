@@ -16,6 +16,40 @@ function fixture() {
   return { store, fetchFlights, service, advance: (ms: number) => { now += ms; } };
 }
 describe('durable aircraft admission through independent services', () => {
+  it('expires a new observation if completion storage crosses the five-minute boundary', async () => {
+    const f = fixture();
+    f.fetchFlights.mockImplementation(async () => ({ items: [{ id: 'expired' } as any], generatedAtMs: start - 299_000 }));
+    const write = f.store.compareAndSwap.bind(f.store);
+    vi.spyOn(f.store, 'compareAndSwap').mockImplementationOnce(write).mockImplementationOnce(async (...args) => {
+      await write(...args);
+      f.advance(2_000);
+    });
+    expect(await f.service().getFlights(query)).toMatchObject({ status: 'unavailable', items: [] });
+    expect(JSON.parse(f.store.contents!).pending).toBeNull();
+  });
+  it.each(['denied', 'read-failed', 'provider-failed'] as const)('expires a stale cache while awaiting %s budget I/O', async (outcome) => {
+    const f = fixture();
+    const service = f.service();
+    await service.getFlights(query);
+    f.advance(299_000);
+    if (outcome === 'provider-failed') {
+      f.fetchFlights.mockRejectedValueOnce(new ProviderError('offline', 503));
+      const write = f.store.compareAndSwap.bind(f.store);
+      vi.spyOn(f.store, 'compareAndSwap').mockImplementationOnce(write).mockImplementationOnce(async (...args) => { await write(...args); f.advance(2_000); });
+    } else {
+      // Another region owns the next slot; this service's cache is still <=5m.
+      await f.service().getFlights({ ...query, latitude: 60 });
+      const read = f.store.read.bind(f.store);
+      vi.spyOn(f.store, 'read').mockImplementationOnce(async () => {
+        f.advance(2_000);
+        if (outcome === 'read-failed') throw new Error('offline');
+        return read();
+      });
+    }
+    const response = await service.getFlights(query);
+    expect(response.items).toEqual([]);
+    expect(response.status).toBe('unavailable');
+  });
   it('charges one upstream request across regions/areas and keeps pacing after recreation', async () => {
     const f = fixture();
     const a = f.service(), b = f.service();
