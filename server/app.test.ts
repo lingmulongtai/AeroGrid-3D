@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { AtlasStatus, DataSnapshot, FlightRecord, WeatherFrame } from '../shared/contracts';
-import type { AtlasDataService } from './services/atlasData';
+import { createAtlasDataService, type AtlasDataService } from './services/atlasData';
+import { ProviderError } from './providers/errors';
 import { PublicLayers } from './services/publicLayers';
 import { createApp } from './app';
 
@@ -35,6 +36,30 @@ function serviceStub(): AtlasDataService {
 }
 
 describe('AeroGrid REST API', () => {
+  it('serves shared flight deadlines without charging paced areas and preserves HTTP 429', async () => {
+    let now = Date.UTC(2026, 9, 15);
+    const fetchFlights = vi.fn().mockImplementationOnce(async () => ({ items: [], generatedAtMs: now }))
+      .mockRejectedValue(new ProviderError('rate limited', 429, 3600));
+    const service = createAtlasDataService({ flightProvider: { fetchFlights }, now: () => now });
+    const app = createApp({ dataService: service });
+    const area = '/api/v1/flights?lat=35.681&lon=139.761&radius_nm=147';
+    const first = await request(app).get(area).expect(200);
+    expect(first.body).toMatchObject({ status: 'available', nextRefreshAfterMs: 210_000, nextRefreshAt: new Date(now + 210_000).toISOString() });
+    const cached = await request(app).get(area).expect(200);
+    expect(cached.body.generatedAt).toBe(first.body.generatedAt);
+    const other = '/api/v1/flights?lat=50&lon=10&radius_nm=150';
+    const paced = await request(app).get(other).expect(200);
+    expect(paced.body).toMatchObject({ reason: 'budget-paced', status: 'unavailable', items: [], nextRefreshAfterMs: 210_000 });
+    expect(fetchFlights).toHaveBeenCalledTimes(1);
+    now += 210_000;
+    const blocked = await request(app).get(other).expect(429);
+    expect(blocked.body).toMatchObject({ status: 'rate-limited', retryAfterSeconds: 3600, nextRefreshAfterMs: 3_600_000 });
+    now += 210_000;
+    await request(app).get(other).expect(429);
+    expect(fetchFlights).toHaveBeenCalledTimes(2);
+    expect(service.getStatus().sources.flights.requestCount).toBe(2);
+  });
+
   it('requires regional camera coverage and skips Fintraffic upstream requests outside its bounds', async () => {
     const upstream = vi.fn();
     const app = createApp({ dataService: serviceStub(), publicLayers: new PublicLayers(upstream) });
