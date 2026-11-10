@@ -622,7 +622,7 @@ button, .layer-switch, .layer-icon, .segmented-control button, .preset-grid butt
 .atlas-search:focus-within .search-shortcut { display: none; }
 .mode-badge { box-shadow: inset 0 0 0 1px rgba(66,211,255,.22); }
 .status-indicator { animation: status-pulse 2.4s ease-in-out infinite; }
-.mini-globe, .source-status, .atlas-search, .map-controls, .atlas-sidebar { animation: panel-in .35s var(--ease) both; }
+.mini-globe, .flight-panel, .source-status, .atlas-search, .map-controls, .atlas-sidebar { animation: panel-in .35s var(--ease) both; }
 .atlas-search { animation-name: panel-in-centered; }
 .globe-tooltip { box-shadow: 0 8px 24px rgba(0,0,0,.45); animation: tooltip-in .12s ease-out; }
 /* The hint teaches the controls once, then gets out of the way. */

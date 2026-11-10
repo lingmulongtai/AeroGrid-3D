@@ -1,5 +1,4 @@
 import { ArrowDown, ArrowUp, Crosshair, Minus, Navigation, Plane, X } from 'lucide-react';
-import { motion } from 'motion/react';
 import type { ReactNode } from 'react';
 import type { FlightRecord } from '../../shared/contracts';
 import type { Locale, Translator } from '../i18n';
@@ -21,11 +20,8 @@ export function FlightInfoPanel({ flight, route, tracked, locale, onClose, onTog
   const number = new Intl.NumberFormat(locale === 'ja' ? 'ja-JP' : 'en-US');
 
   return (
-    <motion.aside
+    <aside
       className="flight-panel"
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 24 }}
       aria-label={flight.callsign}
     >
       <div className="flight-panel-heading">
@@ -47,7 +43,7 @@ export function FlightInfoPanel({ flight, route, tracked, locale, onClose, onTog
         <button type="button" className="track-button" aria-pressed={tracked} onClick={onToggleTrack}><Crosshair />{tracked ? t('flight.stopTracking') : t('flight.track')}</button>
         <button type="button" onClick={onClose}>{t('flight.dismiss')}</button>
       </div>
-    </motion.aside>
+    </aside>
   );
 }
 
