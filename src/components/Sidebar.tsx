@@ -6,6 +6,8 @@ import type { AppMode } from '../../shared/contracts';
 import type { Locale, Translator } from '../i18n';
 import type { LayerKey, LayerVisibility } from '../types/layers';
 import type { ColorMode, MapStyle } from './Map';
+import { readStored, writeStored } from '../utils/storage';
+import type { CSSProperties } from 'react';
 
 interface SidebarProps {
   mode: AppMode;
@@ -30,17 +32,24 @@ interface SidebarProps {
 
 const STORAGE_KEY = 'aerogrid.sidebar.collapsed';
 
+// Band edges of the aircraft colour scales in src/utils/flightUtils.ts
+// (3/6/9/12 km and 50/150/250 m/s), shown in aviation units.
+const LEGEND_TICKS: Partial<Record<ColorMode, string[]>> = {
+  altitude: ['0', '10k', '20k', '30k', '40k+ ft'],
+  speed: ['0', '100', '290', '485+ kt'],
+};
+
 export function Sidebar({
   mode, locale, layers, counts, colorMode, mapStyle, weatherOpacity,
   onToggleLayer, onModeChange, onLocaleChange, onColorModeChange, onMapStyleChange,
   onWeatherOpacityChange, onLoadArea, defaultCollapsed, t, sourceDetails, sourceNotes,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
+    const stored = readStored(STORAGE_KEY);
     return stored === null ? defaultCollapsed : stored === 'true';
   });
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, String(collapsed));
+    writeStored(STORAGE_KEY, String(collapsed));
   }, [collapsed]);
   const number = new Intl.NumberFormat(locale === 'ja' ? 'ja-JP' : 'en-US');
 
@@ -94,6 +103,11 @@ export function Sidebar({
               onChange={(value) => onColorModeChange(value as ColorMode)}
             />
             <div className={`color-legend color-legend-${colorMode}`} aria-hidden="true" />
+            {LEGEND_TICKS[colorMode] && (
+              <div className="color-legend-ticks" aria-hidden="true" style={{ gridTemplateColumns: `repeat(${LEGEND_TICKS[colorMode]!.length}, 1fr)` }}>
+                {LEGEND_TICKS[colorMode]!.map((tick) => <span key={tick}>{tick}</span>)}
+              </div>
+            )}
           </PanelGroup>
 
           <PanelGroup label={t('controls.opacity')}>
@@ -104,6 +118,7 @@ export function Sidebar({
               max="1"
               step="0.05"
               value={weatherOpacity}
+              style={{ '--fill': `${((weatherOpacity - 0.2) / 0.8) * 100}%` } as CSSProperties}
               onChange={(event) => onWeatherOpacityChange(Number(event.target.value))}
               aria-label={t('controls.opacity')}
             />

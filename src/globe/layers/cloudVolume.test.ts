@@ -1,9 +1,16 @@
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { EARTH_RADIUS_KM, lonLatToVector } from '../geo';
-import { cloudHalfHeight, cloudScreenExtent, intersectCloud } from './cloudVolume';
+import { cloudHalfHeight, cloudScreenExtent, intersectCloud, nearestProfile } from './cloudVolume';
 
 describe('physical cloud volumes', () => {
+  it('finds the nearest forecast column across the antimeridian', () => {
+    const profiles = [{ longitude: -179.5, latitude: 0 }, { longitude: 170, latitude: 0 }, { longitude: 0, latitude: 0 }];
+    expect(nearestProfile(profiles, 179.8, 0)).toBe(profiles[0]);
+    expect(nearestProfile(profiles, 5, 1)).toBe(profiles[2]);
+    expect(nearestProfile([], 0, 0)).toBeUndefined();
+  });
+
   it('covers peripheral thin clouds when their front surface shifts in perspective', () => {
     const center = new Vector3(1, 7, -10);
     const bounds = cloudScreenExtent(center, new Vector3(0, 1, 0), 2, 0.4, 1, 1);

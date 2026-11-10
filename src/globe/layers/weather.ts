@@ -19,7 +19,7 @@ import {
   type IUniform,
 } from 'three';
 import { DEG, EARTH_RADIUS_KM, enuFrame, lonLatToVector, wrapLongitude } from '../geo';
-import { cloudHalfHeight } from './cloudVolume';
+import { cloudHalfHeight, nearestProfile } from './cloudVolume';
 import type { CloudProfile } from '../../../shared/live';
 
 interface CloudParticle {
@@ -586,12 +586,12 @@ export class WeatherLayer {
       for (const particle of particles) {
         const longitude = Math.atan2(particle.position.x, particle.position.z) / DEG;
         const latitude = Math.asin(particle.position.y / particle.position.length()) / DEG;
-        const profile = [...this.profiles].sort((a, b) => Math.hypot(a.longitude - longitude, a.latitude - latitude) - Math.hypot(b.longitude - longitude, b.latitude - latitude))[0];
+        const profile = nearestProfile(this.profiles, longitude, latitude);
         const altitude = profile?.levels.find((level) => level.coverPercent >= 10)?.altitudeKm ?? 2.5;
         particle.position.copy(lonLatToVector(longitude, latitude, altitude));
       }
       this.applyRain(particles);
-    }).catch((error) => { if (!controller.signal.aborted) { this.applyRain([]); onError(); } });
+    }).catch(() => { if (!controller.signal.aborted) { this.applyRain([]); onError(); } });
   }
 
   clear() {

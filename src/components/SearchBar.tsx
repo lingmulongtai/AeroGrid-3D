@@ -1,5 +1,5 @@
 import { MapPin, Plane, Satellite, Search, X } from 'lucide-react';
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { FlightRecord } from '../../shared/contracts';
 import type { Airport } from '../data/airports';
 import type { SatelliteRecord } from '../data/satellites';
@@ -46,6 +46,20 @@ export function SearchBar({ flights, satellites, airports, onSelect, t }: Search
     return [...ports.filter((port) => port.airport.iata.toLowerCase() === normalized), ...aircraft, ...sats, ...ports.filter((port) => port.airport.iata.toLowerCase() !== normalized)].slice(0, 9);
   }, [airports, flights, normalized, satellites]);
 
+  // "/" focuses search from anywhere, unless the user is already typing.
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      event.preventDefault();
+      inputRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const select = (result: SearchResult) => {
     onSelect(result);
     setQuery('');
@@ -57,6 +71,7 @@ export function SearchBar({ flights, satellites, airports, onSelect, t }: Search
       <div className="search-input-wrap">
         <Search aria-hidden="true" />
         <input
+          ref={inputRef}
           value={query}
           onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); }}
           placeholder={t('search.placeholder')}
@@ -67,7 +82,7 @@ export function SearchBar({ flights, satellites, airports, onSelect, t }: Search
           aria-controls={listId}
           aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
           onKeyDown={(event) => {
-            if (event.key === 'Escape') setQuery('');
+            if (event.key === 'Escape') { setQuery(''); event.currentTarget.blur(); }
             if (!results.length) return;
             if (event.key === 'ArrowDown') {
               event.preventDefault();
@@ -81,7 +96,9 @@ export function SearchBar({ flights, satellites, airports, onSelect, t }: Search
             }
           }}
         />
-        {query && <button type="button" onClick={() => setQuery('')} aria-label={t('controls.close')}><X /></button>}
+        {query
+          ? <button type="button" onClick={() => setQuery('')} aria-label={t('controls.close')}><X /></button>
+          : <kbd className="search-shortcut" title={t('search.shortcut')} aria-hidden="true">/</kbd>}
       </div>
       {normalized.length >= 2 && (
         <div className="search-results" id={listId} role="listbox">

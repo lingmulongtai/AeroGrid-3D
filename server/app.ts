@@ -1,4 +1,4 @@
-import express, { type Express } from 'express';
+import express, { type ErrorRequestHandler, type Express, type Request, type RequestHandler, type Response } from 'express';
 import compression from 'compression';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -14,6 +14,12 @@ interface AppOptions {
   logger?: (event: Record<string, unknown>) => void;
   publicLayers?: PublicLayers;
   connections?: Connections;
+}
+
+// Express 4 does not observe promises returned by handlers. Without this, a
+// rejected provider call becomes an unhandled rejection that ends the process.
+function guarded(handler: (req: Request, res: Response) => Promise<unknown>): RequestHandler {
+  return (req, res, next) => { handler(req, res).catch(next); };
 }
 
 function parseNumber(value: unknown): number {
@@ -88,7 +94,7 @@ export function createApp({ dataService, staticDir, logger, publicLayers = new P
   });
   app.delete('/api/v1/connections', (req, res) => { connections.remove(connectionToken(req)); res.sendStatus(204); });
 
-  app.get('/api/v1/flights', async (req, res) => {
+  app.get('/api/v1/flights', guarded(async (req, res) => {
     const latitude = parseNumber(req.query.lat);
     const longitude = parseNumber(req.query.lon);
     const radiusNm = parseNumber(req.query.radius_nm);
@@ -111,23 +117,23 @@ export function createApp({ dataService, staticDir, logger, publicLayers = new P
     if (token && !session) return res.status(401).json({ message: 'Connection expired; reconnect in settings' });
     const snapshot = await (session?.flights ?? dataService).getFlights({ latitude, longitude, radiusNm });
     res.status(snapshot.status === 'rate-limited' ? 429 : 200).json(snapshot);
-  });
+  }));
 
-  app.get('/api/v1/weather', async (req, res) => {
+  app.get('/api/v1/weather', guarded(async (req, res) => {
     const forceRefresh = req.query.refresh === '1';
     const snapshot = await dataService.getWeather(forceRefresh);
     res.json(snapshot);
-  });
+  }));
 
   const area = (req: express.Request) => {
     const latitude = parseNumber(req.query.lat), longitude = parseNumber(req.query.lon), radiusNm = parseNumber(req.query.radius_nm);
     return Number.isFinite(latitude) && Math.abs(latitude) <= 90 && Number.isFinite(longitude) && Math.abs(longitude) <= 180 && Number.isFinite(radiusNm) && radiusNm >= 1 && radiusNm <= 250 ? { latitude, longitude, radiusNm } : null;
   };
-  app.get('/api/v1/clouds', async (req, res) => {
+  app.get('/api/v1/clouds', guarded(async (req, res) => {
     const query = area(req);
     if (!query) return res.status(400).json({ message: 'Valid lat, lon and radius_nm (1–250) required' });
     res.json(await publicLayers.clouds(query));
-  });
+  }));
   app.get('/api/v1/satellites', (req, res, next) => {
     res.locals.satellitePayload = true;
     const value = req.query.limit ?? '1200';
@@ -149,18 +155,22 @@ export function createApp({ dataService, staticDir, logger, publicLayers = new P
       res.send(payload.body);
     }).catch(next);
   });
-  app.get('/api/v1/cameras', async (req, res) => {
+  app.get('/api/v1/cameras', guarded(async (req, res) => {
     const query = area(req);
     if (!query) return res.status(400).json({ message: 'Valid lat, lon and radius_nm (1–250) required' });
     res.json(await publicLayers.cameras(query));
-  });
-  app.get('/api/v1/ships', async (req, res) => {
+  }));
+  app.get('/api/v1/ships', guarded(async (req, res) => {
     const query = area(req);
     if (!query) return res.status(400).json({ message: 'Valid lat, lon and radius_nm (1–250) required' });
     const token = connectionToken(req);
     const session = token ? connections.get(token) : undefined;
     if (token && !session) return res.status(401).json({ message: 'Connection expired; reconnect in settings' });
     res.json(session?.preferences.shipSource === 'aisstream' ? connections.ships(session, query) : await publicLayers.ships(query));
+  }));
+
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ code: 'NOT_FOUND', message: 'Unknown API endpoint' });
   });
 
   if (staticDir && fs.existsSync(staticDir)) {
@@ -173,15 +183,23 @@ export function createApp({ dataService, staticDir, logger, publicLayers = new P
           : 'public, max-age=3600');
       },
     }));
-    app.get('*', (req, res, next) => {
-      if (req.path.startsWith('/api/')) {
-        next();
-        return;
-      }
+    app.get('*', (_req, res) => {
       res.setHeader('Cache-Control', 'no-store');
       res.sendFile(path.join(staticDir, 'index.html'));
     });
   }
+
+  // Never expose stack traces or provider details; the request log carries the id.
+  const onError: ErrorRequestHandler = (error, req, res, next) => {
+    if (res.headersSent) { next(error); return; }
+    const status = Number(error?.status ?? error?.statusCode);
+    const clientError = Number.isInteger(status) && status >= 400 && status < 500;
+    if (!clientError) logger?.({ level: 'error', event: 'http.error', method: req.method, path: req.path, error: error instanceof Error ? error.message : String(error) });
+    res.setHeader('Cache-Control', 'no-store');
+    if (clientError) res.status(status).json({ code: 'BAD_REQUEST', message: status === 413 ? 'Request body too large' : 'Malformed request' });
+    else res.status(500).json({ code: 'INTERNAL_ERROR', message: 'Unexpected server error' });
+  };
+  app.use(onError);
 
   return app;
 }
