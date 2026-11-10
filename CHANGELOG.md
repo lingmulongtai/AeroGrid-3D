@@ -6,6 +6,9 @@ All notable changes to AeroGrid 3D are documented here.
 
 ### Changed
 
+- Night side is now moonlit with a cool tint instead of near-black, the terminator reddens like a sunset, the shadowed limb keeps a faint airglow rim, and stars have a soft halo.
+- Interface polish: larger minimum text size, single-line footer, layered glass panels, hover/press feedback, custom sliders and scrollbars, and entry animations. The controls hint fades after a few seconds.
+- The aircraft colour legend now matches the actual colour bands and labels them in feet / knots; press `/` to focus search; the Demo header reads "Simulated" instead of repeating "DEMO".
 - API handlers now forward rejected promises to a JSON error handler instead of ending the process; malformed request bodies and unknown `/api` routes return JSON without stack traces.
 - Browser storage access is guarded, so blocked or private-mode storage no longer prevents startup; a root error boundary replaces blank pages with a reload prompt.
 - Rain columns pick the nearest forecast column in one pass with antimeridian-aware distance.
