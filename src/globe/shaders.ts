@@ -73,6 +73,14 @@ void main() {
   float shade = mix(nightAmbient, 1.0, day) * (0.82 + 0.18 * clamp(sunDot * 2.0, 0.0, 1.0));
   vec3 color = base * mix(1.0, shade, lighting);
 
+  // Moonlit night side: a cool tint keeps coastlines readable instead of
+  // collapsing to black. Low sun reddens the terminator like a real sunset.
+  float night = (1.0 - day) * lighting;
+  float luma = dot(base, vec3(0.2126, 0.7152, 0.0722));
+  color = mix(color, color * vec3(0.62, 0.8, 1.25) + vec3(0.012, 0.02, 0.036) * (0.35 + luma), night * step(nightAmbient, 0.5));
+  float twilight = smoothstep(-0.14, 0.02, sunDot) * (1.0 - smoothstep(0.02, 0.3, sunDot));
+  color *= mix(vec3(1.0), vec3(1.22, 0.9, 0.7), twilight * 0.55 * lighting);
+
   if (cityLights > 0.0) {
     vec3 lights = sampleGlobal(nightMap, n);
     lights = pow(lights, vec3(1.35)) * vec3(1.6, 1.25, 0.82);
@@ -158,6 +166,8 @@ void main() {
   vec3 totalMie = vec3(0.0);
   float depthRayleigh = 0.0;
   float depthMie = 0.0;
+  float airglow = 0.0;
+  bool hitsGround = planet.x < planet.y && planet.x > 0.0;
 
   for (int i = 0; i < 32; i++) {
     if (i >= primarySteps) break;
@@ -169,7 +179,12 @@ void main() {
     depthMie += hm;
 
     vec2 shadow = raySphere(samplePos, sunDirection, planetRadius);
-    if (shadow.x < shadow.y && shadow.x > 0.0) continue;
+    if (shadow.x < shadow.y && shadow.x > 0.0) {
+      // Airglow: the shadowed limb keeps a faint rim so the night edge of the
+      // planet stays distinguishable from space.
+      if (!hitsGround) airglow += hr * exp(-height / 30.0);
+      continue;
+    }
 
     float lightLength = raySphere(samplePos, sunDirection, atmosphereRadius).y;
     float lightStep = lightLength / float(lightSteps);
@@ -187,11 +202,11 @@ void main() {
     totalMie += hm * attenuation;
   }
 
-  bool hitsGround = planet.x < planet.y && planet.x > 0.0;
   vec3 scatter = sunIntensity * (rayleighPhase * RAYLEIGH * totalRayleigh + miePhase * MIE * totalMie * (hitsGround ? 0.2 : 1.0));
   vec3 transmittance = exp(-(RAYLEIGH * depthRayleigh + MIE * depthMie));
   float haze = hitsGround ? groundHaze : 1.0;
   scatter = (1.0 - exp(-scatter)) * strength * haze;
+  scatter += vec3(0.16, 0.42, 0.58) * (1.0 - exp(-airglow * 0.0016)) * 0.16 * strength;
   float alpha = mix(1.0, dot(transmittance, vec3(0.3333)), strength * haze);
   gl_FragColor = vec4(scatter, alpha);
 }
@@ -222,7 +237,8 @@ void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float r2 = dot(p, p);
   if (r2 > 1.0) discard;
-  float core = exp(-r2 * 7.0);
+  // Tight core plus a soft halo so bright stars read as points of light.
+  float core = exp(-r2 * 9.0) + 0.16 * exp(-r2 * 2.2) * (1.0 - r2);
   gl_FragColor = vec4(vColor * core * visibility, 1.0);
 }
 `;

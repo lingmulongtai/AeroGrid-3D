@@ -5,6 +5,7 @@ import { QUALITY_PRESETS, type QualityPreset, type QualitySettings } from '../ty
 import type { EngineStats } from './Map';
 import { DataSettings } from './DataSettings';
 import { PublicStreamSettings } from './PublicStreamSettings';
+import type { CSSProperties } from 'react';
 
 interface SettingsDialogProps {
   quality: QualitySettings;
@@ -134,7 +135,7 @@ function Slider({ label, value, min, max, step, onChange }: {
   return (
     <label className="settings-slider">
       <span><span>{label}</span><output>{value.toLocaleString()}</output></span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
+      <input type="range" min={min} max={max} step={step} value={value} style={{ '--fill': `${((value - min) / (max - min || 1)) * 100}%` } as CSSProperties} onChange={(event) => onChange(Number(event.target.value))} />
     </label>
   );
 }
