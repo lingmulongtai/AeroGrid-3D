@@ -109,6 +109,28 @@ describe('AeroGrid REST API', () => {
     } finally { await rm(staticDir, { recursive: true, force: true }); }
   });
 
+  it('answers provider failures, malformed bodies and unknown API routes with JSON errors', async () => {
+    const service = serviceStub();
+    vi.mocked(service.getFlights).mockRejectedValueOnce(new Error('secret upstream detail'));
+    const logger = vi.fn();
+    const app = createApp({ dataService: service, logger });
+
+    const failed = await request(app).get('/api/v1/flights?lat=35&lon=139&radius_nm=50');
+    expect(failed.status).toBe(500);
+    expect(failed.body).toEqual({ code: 'INTERNAL_ERROR', message: 'Unexpected server error' });
+    expect(failed.headers['cache-control']).toBe('no-store');
+    expect(logger).toHaveBeenCalledWith(expect.objectContaining({ event: 'http.error', error: 'secret upstream detail' }));
+
+    const malformed = await request(app).post('/api/v1/connections').set('Content-Type', 'application/json').send('{"broken"');
+    expect(malformed.status).toBe(400);
+    expect(malformed.body.code).toBe('BAD_REQUEST');
+    expect(malformed.text).not.toContain('SyntaxError');
+
+    const missing = await request(app).get('/api/v1/nope');
+    expect(missing.status).toBe(404);
+    expect(missing.body.code).toBe('NOT_FOUND');
+  });
+
   it('validates the public flight coverage contract', async () => {
     const app = createApp({ dataService: serviceStub() });
     await request(app).get('/api/v1/flights?lat=91&lon=139&radius_nm=150')

@@ -31,7 +31,7 @@ describe('durable aircraft admission through independent services', () => {
   });
   it('expires a new observation if completion storage crosses the five-minute boundary', async () => {
     const f = fixture();
-    f.fetchFlights.mockImplementation(async () => ({ items: [{ id: 'expired' } as any], generatedAtMs: start - 299_000 }));
+    f.fetchFlights.mockImplementation(async () => ({ items: [{ id: 'expired' } as never], generatedAtMs: start - 299_000 }));
     const write = f.store.compareAndSwap.bind(f.store);
     vi.spyOn(f.store, 'compareAndSwap').mockImplementationOnce(write).mockImplementationOnce(async (...args) => {
       await write(...args);
