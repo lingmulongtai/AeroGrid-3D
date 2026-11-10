@@ -1,5 +1,4 @@
 import { Crosshair, MapPin, Orbit, Satellite, X } from 'lucide-react';
-import { motion } from 'motion/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Airport } from '../data/airports';
 import { satelliteState, type SatelliteRecord } from '../data/satellites';
@@ -14,11 +13,8 @@ function Shell({ label, icon, kicker, title, subtitle, onClose, children, t }: {
   label: string; icon: ReactNode; kicker: string; title: string; subtitle: string; onClose: () => void; children: ReactNode; t: Translator;
 }) {
   return (
-    <motion.aside
+    <aside
       className="flight-panel"
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 24 }}
       aria-label={label}
     >
       <div className="flight-panel-heading">
@@ -27,7 +23,7 @@ function Shell({ label, icon, kicker, title, subtitle, onClose, children, t }: {
         <button type="button" onClick={onClose} aria-label={t('controls.close')}><X /></button>
       </div>
       {children}
-    </motion.aside>
+    </aside>
   );
 }
 

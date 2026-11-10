@@ -1,12 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence } from 'motion/react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppMode, DataSnapshot, RadiusCoverage } from '../shared/contracts';
 import { AtlasHeader } from './components/AtlasHeader';
 import { EarthMap, type ColorMode, type GlobeViewState, type MapStyle, type PickResult, type Selection } from './components/Map';
 import { FlightInfoPanel } from './components/FlightInfoPanel';
 import { AirportPanel, SatellitePanel, ShipPanel, CameraPanel } from './components/ObjectPanels';
 import { SearchBar, type SearchResult } from './components/SearchBar';
-import { SettingsDialog } from './components/SettingsDialog';
 import { Sidebar } from './components/Sidebar';
 import { WelcomeDialog } from './components/WelcomeDialog';
 import { loadRegionalAirports, MAJOR_AIRPORTS, type Airport } from './data/airports';
@@ -19,20 +17,24 @@ import { demoRouteFor } from './hooks/useFlightData';
 import { translate, type Locale } from './i18n';
 import { DEFAULT_LAYERS, type LayerKey, type LayerVisibility } from './types/layers';
 import { loadQuality, QUALITY_PRESETS, saveQuality, type QualitySettings } from './types/quality';
+import { readStored, writeStored } from './utils/storage';
+
+// Settings (including provider forms) are only needed once opened.
+const SettingsDialog = lazy(() => import('./components/SettingsDialog').then((module) => ({ default: module.SettingsDialog })));
 
 const INITIAL_CENTER = { latitude: 35.68, longitude: 139.76 };
 
 function storedMode(): AppMode | null {
-  const value = window.localStorage.getItem('aerogrid.mode');
+  const value = readStored('aerogrid.mode');
   return value === 'demo' || value === 'live-beta' ? value : null;
 }
 
 function storedLocale(): Locale {
-  return window.localStorage.getItem('aerogrid.locale') === 'ja' ? 'ja' : 'en';
+  return readStored('aerogrid.locale') === 'ja' ? 'ja' : 'en';
 }
 
 function storedMapStyle(): MapStyle {
-  const value = window.localStorage.getItem('aerogrid.mapStyle');
+  const value = readStored('aerogrid.mapStyle');
   return value === 'dark' || value === 'night' ? value : 'satellite';
 }
 
@@ -76,6 +78,9 @@ export function App() {
   const isMobile = useIsMobile();
   const t = useCallback((key: Parameters<typeof translate>[1], values?: Record<string, string | number>) => translate(locale, key, values), [locale]);
 
+  // Screen readers and browser translation follow the document language.
+  useEffect(() => { document.documentElement.lang = locale; }, [locale]);
+
   useEffect(() => {
     void loadRegionalAirports().then((regional) => setAirports([...MAJOR_AIRPORTS, ...regional]));
   }, []);
@@ -113,17 +118,17 @@ export function App() {
   }, []);
 
   const updateLocale = useCallback((next: Locale) => {
-    window.localStorage.setItem('aerogrid.locale', next);
+    writeStored('aerogrid.locale', next);
     setLocale(next);
   }, []);
 
   const updateMapStyle = useCallback((next: MapStyle) => {
-    window.localStorage.setItem('aerogrid.mapStyle', next);
+    writeStored('aerogrid.mapStyle', next);
     setMapStyle(next);
   }, []);
 
   const updateMode = useCallback((next: AppMode) => {
-    window.localStorage.setItem('aerogrid.mode', next);
+    writeStored('aerogrid.mode', next);
     setMode(next);
     setSelection(null);
     setTracked(null);
@@ -251,7 +256,6 @@ export function App() {
       {mode && <SearchBar flights={flightSnapshot.items} satellites={satellites} airports={airports} onSelect={handleSearch} t={t} />}
       {mode && <AtlasHeader mode={mode} snapshot={flightSnapshot} count={flightStats.airborne} loading={loading} locale={locale} t={t} autoRefreshPaused={autoRefreshPaused} onResume={resumeFlights} />}
 
-      <AnimatePresence>
         {selectedShip && <ShipPanel key={selectedShip.id} ship={selectedShip} onClose={() => setSelection(null)} t={t} />}
         {selectedCamera && <CameraPanel key={selectedCamera.id} camera={selectedCamera} onClose={() => setSelection(null)} t={t} />}
         {selectedFlight && (
@@ -286,7 +290,6 @@ export function App() {
             t={t}
           />
         )}
-      </AnimatePresence>
 
       {mode && (
         <footer className="atlas-footer">
@@ -299,7 +302,9 @@ export function App() {
       )}
 
       {settingsOpen && (
-        <SettingsDialog quality={quality} onChange={updateQuality} onClose={closeSettings} readStats={readStats} t={t} onDataChange={() => setRefreshToken((token) => token + 1)} />
+        <Suspense fallback={null}>
+          <SettingsDialog quality={quality} onChange={updateQuality} onClose={closeSettings} readStats={readStats} t={t} onDataChange={() => setRefreshToken((token) => token + 1)} />
+        </Suspense>
       )}
 
       {!mode && <WelcomeDialog locale={locale} onLocaleChange={updateLocale} onSelectMode={updateMode} t={t} />}

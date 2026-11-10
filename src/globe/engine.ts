@@ -100,6 +100,8 @@ export class GlobeEngine {
   private celestial: CelestialState;
   private lastCelestial = 0;
   private timer = new Timer();
+  private readonly bufferSize = new Vector2();
+  private readonly cameraUp = new Vector3();
   private frameTime = Date.now();
   private frameSidereal = siderealAngle(new Date(this.frameTime));
   private frame = 0;
@@ -126,7 +128,7 @@ export class GlobeEngine {
   constructor(
     private container: HTMLElement,
     private quality: QualitySettings,
-    private offline: boolean,
+    offline: boolean,
     private callbacks: EngineCallbacks,
   ) {
     this.renderer = new WebGLRenderer({
@@ -136,6 +138,9 @@ export class GlobeEngine {
       stencil: false,
       preserveDrawingBuffer: false,
     });
+    // Reading shader logs forces a synchronous compile and link per program,
+    // which stalls the first frames. Keep the diagnostics for development only.
+    this.renderer.debug.checkShaderErrors = import.meta.env.DEV;
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = NeutralToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -480,10 +485,10 @@ export class GlobeEngine {
     this.earth.update(camera, this.frame, this.height * this.pixelRatio);
     this.aircraft.update(now, camera, this.origin, cssPixelsPerRadian);
     this.satellites.update(now, sidereal, camera, this.origin, cssPixelsPerRadian);
-    this.weather.update(performance.now() / 1000, devicePixelsPerRadian, camera, this.renderer.getDrawingBufferSize(new Vector2()));
+    this.weather.update(performance.now() / 1000, devicePixelsPerRadian, camera, this.renderer.getDrawingBufferSize(this.bufferSize));
     this.airports.update(camera.position);
 
-    const up = camera.position.clone().normalize();
+    const up = this.cameraUp.copy(camera.position).normalize();
     const daylight = Math.max(0, Math.min(1, (up.dot(this.celestial.sunDirection) + 0.1) / 0.2));
     const insideAtmosphere = 1 - Math.max(0, Math.min(1, (altitude - 15) / 70));
     this.space.update(this.celestial, camera, daylight * insideAtmosphere);
