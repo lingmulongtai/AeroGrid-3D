@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { normalizeCloudProfile } from './cloudProfiles';
 const now = Date.UTC(2026, 9, 13, 6);
 describe('forecast cloud profiles', () => {

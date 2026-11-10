@@ -6,6 +6,7 @@ import type { AppMode } from '../../shared/contracts';
 import type { Locale, Translator } from '../i18n';
 import type { LayerKey, LayerVisibility } from '../types/layers';
 import type { ColorMode, MapStyle } from './Map';
+import { readStored, writeStored } from '../utils/storage';
 
 interface SidebarProps {
   mode: AppMode;
@@ -36,11 +37,11 @@ export function Sidebar({
   onWeatherOpacityChange, onLoadArea, defaultCollapsed, t, sourceDetails, sourceNotes,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
+    const stored = readStored(STORAGE_KEY);
     return stored === null ? defaultCollapsed : stored === 'true';
   });
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, String(collapsed));
+    writeStored(STORAGE_KEY, String(collapsed));
   }, [collapsed]);
   const number = new Intl.NumberFormat(locale === 'ja' ? 'ja-JP' : 'en-US');
 

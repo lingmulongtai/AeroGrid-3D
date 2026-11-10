@@ -29,7 +29,7 @@ test('satellite frame cost: main vs working tree', async () => {
         const api = baseline ? baselineData : { buildConstellation, constellationFromElements };
         const records = scenario.startsWith('demo') ? api.buildConstellation(count) : api.constellationFromElements(catalog.elements, count, catalog.time);
         expect(records).toHaveLength(count);
-        deep = records.filter((record) => record.periodMinutes >= 225).length;
+        deep = records.filter((record: { periodMinutes: number }) => record.periodMinutes >= 225).length;
         const layer = baseline ? new BaselineLayer() : new SatelliteLayer();
         layer.setConstellation(records); layer.showTrails = !scenario.endsWith('OFF');
         let frame = 0;

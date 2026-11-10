@@ -1,9 +1,27 @@
 import { Vector3 } from 'three';
-import { EARTH_RADIUS_KM } from '../geo';
+import { EARTH_RADIUS_KM, wrapLongitude } from '../geo';
 
 /** Vertical extent is independent of the horizontal weather-system footprint. */
 export function cloudHalfHeight(altitudeKm: number, widthKm: number): number {
   return Math.max(0.01, Math.min(4, widthKm * 0.025, altitudeKm - 0.05));
+}
+
+/**
+ * Closest forecast column to a point, in one pass. Longitude differences wrap at
+ * the antimeridian and shrink with latitude, so a column across the date line
+ * is not mistaken for one on the far side of the planet.
+ */
+export function nearestProfile<T extends { longitude: number; latitude: number }>(profiles: readonly T[], longitude: number, latitude: number): T | undefined {
+  const eastScale = Math.cos(latitude * Math.PI / 180);
+  let best: T | undefined;
+  let bestDistance = Infinity;
+  for (const profile of profiles) {
+    const east = wrapLongitude(profile.longitude - longitude) * eastScale;
+    const north = profile.latitude - latitude;
+    const distance = east * east + north * north;
+    if (distance < bestDistance) { bestDistance = distance; best = profile; }
+  }
+  return best;
 }
 
 /** Conservative NDC extent used by the cloud proxy, including perspective shift. */

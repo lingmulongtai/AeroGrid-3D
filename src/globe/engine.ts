@@ -126,7 +126,7 @@ export class GlobeEngine {
   constructor(
     private container: HTMLElement,
     private quality: QualitySettings,
-    private offline: boolean,
+    offline: boolean,
     private callbacks: EngineCallbacks,
   ) {
     this.renderer = new WebGLRenderer({
