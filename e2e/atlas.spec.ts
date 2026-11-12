@@ -312,6 +312,7 @@ test('Live Beta loads NASA models for the matching catalog entries on demand', a
     { name: 'ISS (ZARYA)', search: 'International Space Station', id: 25544, internationalId: '1998-067A', model: 'iss', inclination: 51.6, motion: 15.49 },
     { name: 'AQUA', search: '27424', id: 27424, internationalId: '2002-022A', model: 'aqua', inclination: 98.2, motion: 14.57 },
     { name: 'SUOMI NPP', search: 'SUOMI NPP', id: 37849, internationalId: '2011-061A', model: 'suomi-npp', inclination: 98.8, motion: 14.20 },
+    { name: 'HST', search: 'Hubble Space Telescope', id: 20580, internationalId: '1990-037B', model: 'hubble', inclination: 28.5, motion: 15.30 },
   ];
   await page.route('**/api/v1/satellites**', (route) => route.fulfill({ json: {
     ...snapshot, source: 'celestrak', status: 'available',
@@ -340,8 +341,8 @@ test('Live Beta loads NASA models for the matching catalog entries on demand', a
   }
   await expectHealthyPage(page);
   if (!isMobile) {
-    await expect.poll(() => page.evaluate(() => (window as any).__globe.controls.rig.range), { timeout: 15_000 }).toBeLessThan(1);
-    await page.screenshot({ path: testInfo.outputPath('suomi-npp.png') });
+    await expect.poll(() => page.evaluate(() => (window as any).__globe.controls.flight === null), { timeout: 15_000 }).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('hubble.png') });
   }
 });
 
