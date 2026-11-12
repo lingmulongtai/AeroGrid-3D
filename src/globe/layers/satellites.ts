@@ -361,7 +361,7 @@ export class SatelliteLayer {
       const detailed = selected && asset && detailReady;
       const distance = Math.hypot(p1.x - camera.position.x, p1.y - camera.position.y, p1.z - camera.position.z);
       const pixels = detailed ? DETAILED_MODEL_PIXELS : TARGET_PIXELS[record.model] * (selected ? 1.7 : 1);
-      const lengthM = detailed ? asset.spanMeters : MODEL_LENGTH[record.model];
+      const lengthM = detailed ? (asset.spanMeters ?? 0) : MODEL_LENGTH[record.model];
       const spanKm = Math.max(lengthM / 1000, pixels * distance / pixelsPerRadian);
       const scale = detailed ? spanKm : spanKm / lengthM;
       matrix.makeBasis(xAxis, yAxis, zAxis).scale(scaleVector.set(scale, scale, scale));

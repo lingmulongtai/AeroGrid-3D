@@ -1,6 +1,7 @@
 import { MapPin, Plane, Satellite, Search, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { FlightRecord } from '../../shared/contracts';
+import { spacecraftModelByNoradId } from '../../shared/spacecraftModels';
 import type { Airport } from '../data/airports';
 import type { SatelliteRecord } from '../data/satellites';
 import type { MessageKey, Translator } from '../i18n';
@@ -36,7 +37,11 @@ export function SearchBar({ flights, satellites, airports, onSelect, t }: Search
       .filter((flight) => [flight.callsign, flight.registration, flight.aircraftType, flight.id].some(matches))
       .slice(0, 5)
       .map((flight) => ({ kind: 'aircraft' as const, flight }));
-    const sats = satellites.filter((satellite) => matches(satellite.name)).slice(0, 3)
+    const sats = satellites.filter((satellite) => {
+      const noradId = satellite.elements?.NORAD_CAT_ID;
+      return matches(satellite.name) || (noradId !== undefined
+        && (normalized === String(noradId) || matches(spacecraftModelByNoradId.get(noradId)?.name)));
+    }).slice(0, 3)
       .map((satellite) => ({ kind: 'satellite' as const, satellite }));
     const ports = airports
       .filter((airport) => airport.iata.toLowerCase() === normalized || matches(airport.city) || matches(airport.name) || matches(airport.icao))
