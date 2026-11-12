@@ -24,6 +24,10 @@ Courtesy of NASA. These models are used for the informational visualization unde
 | `swas.glb` | [Submillimeter Wave Astronomy Satellite (SWAS)](https://science.nasa.gov/3d-resources/submillimeter-wave-astronomy-satellite-swas/) | NASA / Christopher R. Meaney |
 | `tess.glb` | [Transiting Exoplanet Survey Satellite (TESS) (B)](https://science.nasa.gov/3d-resources/transiting-exoplanet-survey-satellite-tess-b/) | NASA / Matthew J. Garcia |
 | `themis.glb` | [Time History of Events and Macroscale Interactions During Substorms (THEMIS)](https://science.nasa.gov/3d-resources/time-history-of-events-and-macroscale-interactions-during-substorms-themis/) | NASA / JPL Eyes on the Solar System |
+| `cygnss.glb` | [Cyclone Global Navigation Satellite System (CYGNSS)](https://science.nasa.gov/3d-resources/cyclone-global-navigation-satellite-system-cygnss/) | NASA 3D Resources |
+| `goes-nop.glb` | [Geostationary Operational Environmental Satellites](https://science.nasa.gov/3d-resources/geostationary-operational-environmental-satellites/) | NASA / Christopher R. Meaney |
+| `tdrs-first-gen.glb` | [Tracking and Data Relay Satellites (E)](https://science.nasa.gov/3d-resources/tracking-and-data-relay-satellites-trds-e/) | NASA / Christopher R. Meaney |
+| `tdrs-third-gen.glb` | [Tracking and Data Relay Satellites (D)](https://science.nasa.gov/3d-resources/tracking-and-data-relay-satellites-tdrs-d/) | NASA / Christopher R. Meaney |
 
 Sozai Search MCP v0.2.2 retrieved the source GLBs from [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources/tree/11ebb4ee043715aefbba6aeec8a61746fad67fa7). glTF Transform aligned and centered the models, normalized them to a unit span, and quantized their geometry. Textures are limited to 256 pixels per side. Meshoptimizer simplified denser meshes, and several untextured meshes use flat shading.
 
@@ -32,3 +36,5 @@ The Hubble model is used under [CC BY-NC 4.0](https://creativecommons.org/licens
 For close views, the ISS and Aqua use the published [ISS wingspan](https://www.nasa.gov/reference/international-space-station/) and [Aqua deployed span](https://aqua.nasa.gov/content/about-aqua). Suomi NPP uses an approximate 9 m span based on its model proportions and [8 m solar array](https://ntrs.nasa.gov/citations/20180002828). Models without a calibrated span use screen size. Model orientation is illustrative. Live Beta displays spacecraft with usable CelesTrak elements.
 
 The longest antenna booms determine the close-view spans for [MMS](https://mms.gsfc.nasa.gov/documents/education/math_guide/mms_math_guide.pdf), [Polar](https://ntrs.nasa.gov/api/citations/19970017186/downloads/19970017186.pdf), and [THEMIS](https://themis.ssl.berkeley.edu/efi_table.shtml).
+
+Spacecraft of the same design share their model. The GOES model matches the [GOES-N/O/P spacecraft](https://svs.gsfc.nasa.gov/10413/) and is used for GOES-14 and GOES-15. TDRS models match the first and third designs in [NASA's TDRS generation comparison](https://www.nasa.gov/missions/tdrs/tracking-and-data-relay-satellite-tdrs-generations-of-spacecraft/).
