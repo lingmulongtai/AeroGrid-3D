@@ -79,8 +79,8 @@ export class SatelliteLayer {
   private cached: CachedSatellite[] = [];
   private entriesById = new Map<string, CachedSatellite>();
   private detail = new Group();
-  private detailModels = new Map<string, Group | null>();
-  private disposed = false;
+  private detailUrl?: string;
+  private detailRequest?: Promise<Group>;
   private frame: SatelliteFrame | null = null;
   private nextKeyframe = 0;
   private nextTrail = 0;
@@ -310,21 +310,28 @@ export class SatelliteLayer {
 
   private orbitOrigin = new Vector3();
 
-  private detailModel(url: string) {
-    const cached = this.detailModels.get(url);
-    if (cached !== undefined) return cached;
-    // Keep the instanced marker while loading, including if the asset fails.
-    this.detailModels.set(url, null);
-    void loadSatelliteModel(url).then((model) => {
-      if (this.disposed) disposeSatelliteModel(model);
-      else this.detailModels.set(url, model);
-    }).catch(() => {});
-    return null;
+  private setDetailModel(url?: string) {
+    if (url === this.detailUrl) return;
+    this.detailUrl = url;
+    this.detailRequest = undefined;
+    const previous = this.detail.children[0];
+    if (previous instanceof Group) disposeSatelliteModel(previous);
+    this.detail.clear();
+    if (!url) return;
+
+    const request = this.detailRequest = loadSatelliteModel(url);
+    void request.then((model) => {
+      if (this.detailRequest === request) this.detail.add(model);
+      else disposeSatelliteModel(model);
+    }, () => {
+      // The instanced marker remains visible if the asset fails.
+    });
   }
 
   update(now: number, sidereal: number, camera: PerspectiveCamera, origin: Vector3, pixelsPerRadian: number) {
     this.group.visible = this.visible;
     if (!this.visible) {
+      this.setDetailModel();
       this.pickIds = [];
       return;
     }
@@ -334,11 +341,8 @@ export class SatelliteLayer {
     now = this.frame!.timeMs;
     const selectedRecord = this.selectedId ? this.entriesById.get(this.selectedId)?.record : undefined;
     const asset = selectedRecord && satelliteModels.get(selectedRecord.id);
-    const detailModel = asset ? this.detailModel(asset.url) : null;
-    if ((this.detail.children[0] ?? null) !== detailModel) {
-      this.detail.clear();
-      if (detailModel) this.detail.add(detailModel);
-    }
+    this.setDetailModel(asset?.url);
+    const detailReady = this.detail.children.length > 0;
     const counters: Record<SatelliteModelKind, number> = { station: 0, satellite: 0, starlink: 0 };
     if (this.pickIds.length !== this.records.length) this.pickIds = this.records.map((record) => record.id);
     if (this.showTrails) this.cacheTrails();
@@ -354,7 +358,7 @@ export class SatelliteLayer {
       xAxis.crossVectors(yAxis, zAxis).normalize();
 
       const selected = record.id === this.selectedId;
-      const detailed = selected && asset && detailModel;
+      const detailed = selected && asset && detailReady;
       const distance = Math.hypot(p1.x - camera.position.x, p1.y - camera.position.y, p1.z - camera.position.z);
       const pixels = detailed ? DETAILED_MODEL_PIXELS : TARGET_PIXELS[record.model] * (selected ? 1.7 : 1);
       const lengthM = detailed ? asset.spanMeters : MODEL_LENGTH[record.model];
@@ -414,12 +418,7 @@ export class SatelliteLayer {
   }
 
   dispose() {
-    this.disposed = true;
-    for (const model of this.detailModels.values()) {
-      if (model) disposeSatelliteModel(model);
-    }
-    this.detailModels.clear();
-    this.detail.clear();
+    this.setDetailModel();
     for (const mesh of Object.values(this.meshes)) mesh.dispose();
     for (const geometry of Object.values(this.geometries)) geometry.dispose();
     this.trailGeometry.dispose();
