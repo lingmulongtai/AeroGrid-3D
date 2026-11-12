@@ -1,5 +1,6 @@
 import { json2satrec, sgp4 } from 'satellite.js';
 import { ORBITAL_ELEMENT_FIELDS, satelliteCategory, type OrbitalElements, type SatelliteCategory } from '../../shared/live.js';
+import { spacecraftModelByNoradId } from '../../shared/spacecraftModels.js';
 import { validElements } from '../providers/orbits.js';
 
 const DAY_MS = 86_400_000;
@@ -39,7 +40,9 @@ export function selectSatelliteCatalog(elements: OrbitalElements[], timeMs: numb
   for (const element of elements) {
     if (usable(element, timeMs)) groups.get(satelliteCategory(element))!.push(element);
   }
-  const result = groups.get('station')!.sort((a, b) => a.NORAD_CAT_ID - b.NORAD_CAT_ID);
+  const stations = groups.get('station')!.sort((a, b) => a.NORAD_CAT_ID - b.NORAD_CAT_ID);
+  const modeled: OrbitalElements[] = [];
+  const remaining: OrbitalElements[] = [];
   const population = [...groups.values()].reduce((sum, group) => sum + group.length, 0) || 1;
   const active = categories.filter((category) => category !== 'station' && groups.get(category)!.length).map((category) => {
     const items = spread(groups.get(category)!);
@@ -54,8 +57,11 @@ export function selectSatelliteCatalog(elements: OrbitalElements[], timeMs: numb
       if (group.credit > best.credit) best = group;
     }
     best.credit -= total;
-    result.push(best.items[best.index++]);
+    const element = best.items[best.index++];
+    // Preserve the weighted order within each set and make models findable at Low quality.
+    const destination = spacecraftModelByNoradId.has(element.NORAD_CAT_ID) ? modeled : remaining;
+    destination.push(element);
     if (best.index === best.items.length) active.splice(active.indexOf(best), 1);
   }
-  return result.map((element) => Object.fromEntries(ORBITAL_ELEMENT_FIELDS.map((key) => [key, element[key]])) as OrbitalElements);
+  return [...stations, ...modeled, ...remaining].map((element) => Object.fromEntries(ORBITAL_ELEMENT_FIELDS.map((key) => [key, element[key]])) as OrbitalElements);
 }

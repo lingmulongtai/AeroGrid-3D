@@ -29,6 +29,9 @@ async function cameraState(page: Page) {
   }));
 }
 
+const selectedSatelliteModel = (page: Page) =>
+  page.evaluate(() => (window as any).__globe.satellites.detail.children[0]?.children[0]?.name ?? null);
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => { localStorage.clear(); sessionStorage.clear(); });
   for (const endpoint of ['satellites', 'clouds', 'ships', 'cameras']) {
@@ -280,12 +283,68 @@ test('Demo stays separate and supports the primary exploration flow', async ({ p
   await expect(page.locator('.map-surface')).toHaveAttribute('data-tracking', 'none');
 
   await page.getByRole('combobox').fill('ISS');
+  const modelResponse = page.waitForResponse((response) => /\/iss(?:-[\w-]+)?\.glb$/.test(new URL(response.url()).pathname));
   await page.getByRole('option', { name: /ISS/ }).first().click();
   await expect(page.getByRole('complementary', { name: 'ISS' })).toContainText('Simulated orbit');
   await expect(page.locator('.map-surface')).toHaveAttribute('data-tracking', 'satellite');
+  expect((await modelResponse).ok()).toBe(true);
+  await expect.poll(() => selectedSatelliteModel(page), { timeout: 15_000 }).toBe('iss');
+  await page.getByRole('combobox').fill('Tiangong');
+  await page.getByRole('option', { name: /Tiangong/ }).first().click();
+  await expect(page.getByRole('complementary', { name: 'Tiangong' })).toContainText('Simulated orbit');
+  await expect.poll(() => selectedSatelliteModel(page)).toBeNull();
 
   await expectHealthyPage(page);
   expect(pageErrors).toEqual([]);
+});
+
+test('Live Beta loads NASA models for the matching catalog entries on demand', async ({ page, isMobile }, testInfo) => {
+  const epoch = new Date();
+  const snapshot = {
+    mode: 'live-beta', generatedAt: epoch.toISOString(),
+    expiresAt: new Date(epoch.getTime() + 600_000).toISOString(), coverage: { kind: 'global' },
+  };
+  await page.route('**/api/v1/flights**', (route) =>
+    route.fulfill({ json: { ...snapshot, source: 'adsb.lol', status: 'unavailable', items: [] } }));
+  await page.route('**/api/v1/weather**', (route) =>
+    route.fulfill({ json: { ...snapshot, source: 'rainviewer', status: 'unavailable', items: [] } }));
+  const spacecraft = [
+    { name: 'ISS (ZARYA)', search: 'International Space Station', id: 25544, internationalId: '1998-067A', model: 'iss', inclination: 51.6, motion: 15.49 },
+    { name: 'AQUA', search: '27424', id: 27424, internationalId: '2002-022A', model: 'aqua', inclination: 98.2, motion: 14.57 },
+    { name: 'CYGFM05', search: 'CYGNSS', id: 41884, internationalId: '2016-078A', model: 'cygnss', inclination: 35, motion: 15.65 },
+    { name: 'SUOMI NPP', search: 'SUOMI NPP', id: 37849, internationalId: '2011-061A', model: 'suomi-npp', inclination: 98.8, motion: 14.20 },
+    { name: 'HST', search: 'Hubble Space Telescope', id: 20580, internationalId: '1990-037B', model: 'hubble', inclination: 28.5, motion: 15.30 },
+  ];
+  await page.route('**/api/v1/satellites**', (route) => route.fulfill({ json: {
+    ...snapshot, source: 'celestrak', status: 'available',
+    items: spacecraft.map(({ name, id, internationalId, inclination, motion }) => ({
+      OBJECT_NAME: name, OBJECT_ID: internationalId, NORAD_CAT_ID: id, EPOCH: epoch.toISOString(),
+      MEAN_MOTION: motion, ECCENTRICITY: 0.001, INCLINATION: inclination, RA_OF_ASC_NODE: 30,
+      ARG_OF_PERICENTER: 15, MEAN_ANOMALY: 45, ELEMENT_SET_NO: 1, REV_AT_EPOCH: 1,
+      BSTAR: 0, MEAN_MOTION_DOT: 0, MEAN_MOTION_DDOT: 0,
+    })),
+  } }));
+  const requests: string[] = [];
+  page.on('request', (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (request.resourceType() === 'fetch' && pathname.endsWith('.glb')) requests.push(pathname);
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Live Beta/ }).click();
+  for (const [index, { name, search, model }] of spacecraft.entries()) {
+    await page.getByRole('combobox').fill(search);
+    const option = page.getByRole('option').filter({ has: page.getByText(name, { exact: true }) });
+    await expect(option).toBeVisible();
+    expect(requests).toHaveLength(index);
+    await option.click();
+    await expect.poll(() => selectedSatelliteModel(page), { timeout: 15_000 }).toBe(model);
+    expect(requests.at(-1)).toMatch(new RegExp(`/${model}(?:-[\\w-]+)?\\.glb$`));
+  }
+  await expectHealthyPage(page);
+  if (!isMobile) {
+    await expect.poll(() => page.evaluate(() => (window as any).__globe.controls.flight === null), { timeout: 15_000 }).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('hubble.png') });
+  }
 });
 
 test('the sidebar folds upward and switches the interface language', async ({ page, isMobile }) => {

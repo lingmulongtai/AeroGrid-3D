@@ -15,6 +15,7 @@ The public beta is designed for non-commercial, low-cost operation without an SL
 - Accurate sky: the Sun and Moon are positioned with astronomy-engine, and 8,900 real stars from the HYG catalogue plus a procedural Milky Way rotate with sidereal time.
 - Map styles: Sentinel-2 cloudless + Esri satellite imagery, an OpenGridWorks-style dark map with navy oceans, and NASA Black Marble night lights.
 - Faceted 3D models for airliners, heavies, light aircraft, helicopters, satellites, Starlink-class craft, and space stations; fast objects leave short light trails.
+- Selecting a supported spacecraft loads its [NASA 3D model](src/globe/assets/CREDITS.md). ISS is also available in Global Demo. Live Beta matches models by NORAD number and uses lightweight markers for the wider constellation.
 - Weather is rendered as lit cloud and rain particles: simulated cyclones, fronts and thunderstorms in Demo, RainViewer radar converted to particles in Live Beta.
 - 1,150 major and 2,094 regional airports (OurAirports) with zoom-dependent markers and labels.
 - Google Earth style navigation: drag to pan, wheel to zoom towards the cursor, Ctrl / Shift / right-drag to tilt, Alt-drag to rotate, double-click to fly in, compass to restore north. The overview mini globe shows where you are looking.
@@ -57,7 +58,7 @@ Public endpoints:
 
 Shared types live in `shared/contracts.ts`, including `AppMode`, `SourceStatus`, and `DataSnapshot<T>`.
 
-Satellite delivery uses the requested quality limit (300 / 1200 / 2400 / 4200), with only the 14 OMM fields required for SGP4, display and validation. Each orbital cache generation has one deterministic order: ISS and Tiangong first, then population-weighted categories with a 2% minimum weight. NORAD interval midpoints spread each category across its catalog number range; larger limits extend the same prefix. This changes the displayed population to include Starlink even at Low quality.
+Satellite delivery uses the requested quality limit (300 / 1200 / 2400 / 4200), with only the 14 OMM fields required for SGP4, display and validation. Each orbital cache generation has one deterministic order. ISS and Tiangong come first, followed by spacecraft with detailed models and the rest of the population. Both groups retain their population-weighted category order, with a 2% minimum weight and NORAD interval midpoints to spread each category across its catalog number range. Larger limits extend the same prefix. Search accepts catalog names, model names, and exact NORAD numbers.
 
 `/api/v1/satellites` overrides the API's default `no-store` with `public, max-age=min(600, seconds until expiresAt)`, clamped to zero. Strong ETags distinguish generation, limit, metadata and encoded bytes; matching validators return 304. Unavailable responses remain `no-store`. JSON and gzip/Brotli representations are memoized in memory for up to 16 recently used limits per generation; the full persistent OMM cache and its refresh/failure policy remain unchanged. API JSON and static text assets support gzip/Brotli; PNG/JPG remain uncompressed. Satellite and camera catalogs ignore unrelated refresh tokens and retain unchanged snapshot references. Cameras now request the loaded area; satellites remain global.
 
