@@ -311,6 +311,7 @@ test('Live Beta loads NASA models for the matching catalog entries on demand', a
   const spacecraft = [
     { name: 'ISS (ZARYA)', search: 'International Space Station', id: 25544, internationalId: '1998-067A', model: 'iss', inclination: 51.6, motion: 15.49 },
     { name: 'AQUA', search: '27424', id: 27424, internationalId: '2002-022A', model: 'aqua', inclination: 98.2, motion: 14.57 },
+    { name: 'CYGFM05', search: 'CYGNSS', id: 41884, internationalId: '2016-078A', model: 'cygnss', inclination: 35, motion: 15.65 },
     { name: 'SUOMI NPP', search: 'SUOMI NPP', id: 37849, internationalId: '2011-061A', model: 'suomi-npp', inclination: 98.8, motion: 14.20 },
     { name: 'HST', search: 'Hubble Space Telescope', id: 20580, internationalId: '1990-037B', model: 'hubble', inclination: 28.5, motion: 15.30 },
   ];

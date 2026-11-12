@@ -26,6 +26,10 @@ export const spacecraftModels: readonly SpacecraftModel[] = [
   { slug: 'swas', name: 'Submillimeter Wave Astronomy Satellite (SWAS)', noradIds: [25560] },
   { slug: 'tess', name: 'Transiting Exoplanet Survey Satellite (TESS)', noradIds: [43435] },
   { slug: 'themis', name: 'THEMIS', noradIds: [30580, 30797, 30798], spanMeters: 50 },
+  { slug: 'cygnss', name: 'Cyclone Global Navigation Satellite System (CYGNSS)', noradIds: [41884, 41885, 41886, 41887, 41888, 41890, 41891] },
+  { slug: 'goes-nop', name: 'GOES-N/O/P', noradIds: [35491, 36411] },
+  { slug: 'tdrs-first-gen', name: 'Tracking and Data Relay Satellite (TDRS) First Generation', noradIds: [19548, 21639, 22314, 23613] },
+  { slug: 'tdrs-third-gen', name: 'Tracking and Data Relay Satellite (TDRS) Third Generation', noradIds: [39070, 39504, 42915] },
 ];
 
 export const spacecraftModelByNoradId = new Map(
