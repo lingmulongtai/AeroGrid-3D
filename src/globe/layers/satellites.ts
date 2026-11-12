@@ -24,11 +24,13 @@ import {
 import { EARTH_RADIUS_KM } from '../geo';
 import { createLiveryMaterial } from '../materials';
 import { createSatelliteGeometries, MODEL_LENGTH_M } from '../models';
+import { disposeSatelliteModel, loadSatelliteModel, satelliteModels } from '../satelliteModels';
 
 const TRAIL_POINTS = 14;
 export const SATELLITE_KEYFRAME_MS = 1000;
 const ORBIT_REFRESH_MS = 10_000;
 const SELECTED_COLOR = new Color(1.2, 1.2, 1.15);
+const DETAILED_MODEL_PIXELS = 48;
 const TARGET_PIXELS: Record<SatelliteModelKind, number> = { station: 20, satellite: 11, starlink: 6.5 };
 const MODEL_LENGTH: Record<SatelliteModelKind, number> = {
   station: MODEL_LENGTH_M.station,
@@ -76,6 +78,9 @@ export class SatelliteLayer {
   private emissive;
   private cached: CachedSatellite[] = [];
   private entriesById = new Map<string, CachedSatellite>();
+  private detail = new Group();
+  private detailUrl?: string;
+  private detailRequest?: Promise<Group>;
   private frame: SatelliteFrame | null = null;
   private nextKeyframe = 0;
   private nextTrail = 0;
@@ -96,6 +101,9 @@ export class SatelliteLayer {
       this.group.add(mesh);
       return [model, mesh];
     })) as unknown as Record<SatelliteModelKind, InstancedMesh>;
+
+    this.detail.matrixAutoUpdate = false;
+    this.group.add(this.detail);
 
     this.trails = new LineSegments(this.trailGeometry, new LineBasicMaterial({
       vertexColors: true,
@@ -302,9 +310,28 @@ export class SatelliteLayer {
 
   private orbitOrigin = new Vector3();
 
+  private setDetailModel(url?: string) {
+    if (url === this.detailUrl) return;
+    this.detailUrl = url;
+    this.detailRequest = undefined;
+    const previous = this.detail.children[0];
+    if (previous instanceof Group) disposeSatelliteModel(previous);
+    this.detail.clear();
+    if (!url) return;
+
+    const request = this.detailRequest = loadSatelliteModel(url);
+    void request.then((model) => {
+      if (this.detailRequest === request) this.detail.add(model);
+      else disposeSatelliteModel(model);
+    }, () => {
+      // The instanced marker remains visible if the asset fails.
+    });
+  }
+
   update(now: number, sidereal: number, camera: PerspectiveCamera, origin: Vector3, pixelsPerRadian: number) {
     this.group.visible = this.visible;
     if (!this.visible) {
+      this.setDetailModel();
       this.pickIds = [];
       return;
     }
@@ -312,6 +339,10 @@ export class SatelliteLayer {
     this.group.updateMatrixWorld(true);
     this.prepareFrame(now, sidereal);
     now = this.frame!.timeMs;
+    const selectedRecord = this.selectedId ? this.entriesById.get(this.selectedId)?.record : undefined;
+    const asset = selectedRecord && satelliteModels.get(selectedRecord.id);
+    this.setDetailModel(asset?.url);
+    const detailReady = this.detail.children.length > 0;
     const counters: Record<SatelliteModelKind, number> = { station: 0, satellite: 0, starlink: 0 };
     if (this.pickIds.length !== this.records.length) this.pickIds = this.records.map((record) => record.id);
     if (this.showTrails) this.cacheTrails();
@@ -327,16 +358,23 @@ export class SatelliteLayer {
       xAxis.crossVectors(yAxis, zAxis).normalize();
 
       const selected = record.id === this.selectedId;
+      const detailed = selected && asset && detailReady;
       const distance = Math.hypot(p1.x - camera.position.x, p1.y - camera.position.y, p1.z - camera.position.z);
-      const lengthKm = MODEL_LENGTH[record.model] / 1000;
-      const pixels = TARGET_PIXELS[record.model] * (selected ? 1.7 : 1);
-      const scale = Math.max(1, (pixels * distance) / (lengthKm * pixelsPerRadian)) / 1000;
+      const pixels = detailed ? DETAILED_MODEL_PIXELS : TARGET_PIXELS[record.model] * (selected ? 1.7 : 1);
+      const lengthM = detailed ? (asset.spanMeters ?? 0) : MODEL_LENGTH[record.model];
+      const spanKm = Math.max(lengthM / 1000, pixels * distance / pixelsPerRadian);
+      const scale = detailed ? spanKm : spanKm / lengthM;
       matrix.makeBasis(xAxis, yAxis, zAxis).scale(scaleVector.set(scale, scale, scale));
       matrix.setPosition(p1.x - origin.x, p1.y - origin.y, p1.z - origin.z);
-      const mesh = this.meshes[record.model];
-      const slot = counters[record.model]++;
-      mesh.setMatrixAt(slot, matrix);
-      mesh.setColorAt(slot, selected ? SELECTED_COLOR : this.colors[index]);
+      if (detailed) {
+        this.detail.matrix.copy(matrix);
+        this.detail.matrixWorldNeedsUpdate = true;
+      } else {
+        const mesh = this.meshes[record.model];
+        const slot = counters[record.model]++;
+        mesh.setMatrixAt(slot, matrix);
+        mesh.setColorAt(slot, selected ? SELECTED_COLOR : this.colors[index]);
+      }
 
       if (this.showTrails && trailPositions && entry.trail) {
         const trail = entry.trail;
@@ -369,8 +407,7 @@ export class SatelliteLayer {
     }
     this.trails.position.copy(this.trailsOrigin).sub(origin);
 
-    const selected = this.selectedId ? this.records.find((record) => record.id === this.selectedId) : undefined;
-    this.updateOrbit(selected, now, origin);
+    this.updateOrbit(selectedRecord, now, origin);
   }
 
   private trailsOrigin = new Vector3();
@@ -381,6 +418,7 @@ export class SatelliteLayer {
   }
 
   dispose() {
+    this.setDetailModel();
     for (const mesh of Object.values(this.meshes)) mesh.dispose();
     for (const geometry of Object.values(this.geometries)) geometry.dispose();
     this.trailGeometry.dispose();
