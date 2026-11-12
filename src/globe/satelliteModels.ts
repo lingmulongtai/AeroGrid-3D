@@ -1,11 +1,15 @@
 import { Mesh, MeshStandardMaterial, Texture, type Group } from 'three';
+import aquaUrl from './assets/aqua.glb?url';
 import issUrl from './assets/iss.glb?url';
+import suomiUrl from './assets/suomi-npp.glb?url';
 
 const iss = { url: issUrl, spanMeters: 109 };
 
 export const satelliteModels = new Map([
   ['iss', iss],
   ['norad-25544', iss],
+  ['norad-27424', { url: aquaUrl, spanMeters: 16.7 }],
+  ['norad-37849', { url: suomiUrl, spanMeters: 9 }],
 ]);
 
 export async function loadSatelliteModel(url: string): Promise<Group> {
