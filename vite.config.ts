@@ -29,6 +29,7 @@ export default defineConfig(({mode}) => {
         output: {
           manualChunks(id) {
             if (!id.includes('node_modules')) return undefined;
+            if (id.endsWith('/loaders/GLTFLoader.js')) return 'gltf-loader';
             if (id.includes('/three/')) return 'three';
             if (id.includes('astronomy-engine')) return 'astronomy';
             return 'vendor';
