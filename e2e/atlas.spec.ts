@@ -309,9 +309,9 @@ test('Live Beta loads NASA models for the matching catalog entries on demand', a
   await page.route('**/api/v1/weather**', (route) =>
     route.fulfill({ json: { ...snapshot, source: 'rainviewer', status: 'unavailable', items: [] } }));
   const spacecraft = [
-    { name: 'ISS (ZARYA)', id: 25544, internationalId: '1998-067A', model: 'iss', inclination: 51.6, motion: 15.49 },
-    { name: 'AQUA', id: 27424, internationalId: '2002-022A', model: 'aqua', inclination: 98.2, motion: 14.57 },
-    { name: 'SUOMI NPP', id: 37849, internationalId: '2011-061A', model: 'suomi-npp', inclination: 98.8, motion: 14.20 },
+    { name: 'ISS (ZARYA)', search: 'International Space Station', id: 25544, internationalId: '1998-067A', model: 'iss', inclination: 51.6, motion: 15.49 },
+    { name: 'AQUA', search: '27424', id: 27424, internationalId: '2002-022A', model: 'aqua', inclination: 98.2, motion: 14.57 },
+    { name: 'SUOMI NPP', search: 'SUOMI NPP', id: 37849, internationalId: '2011-061A', model: 'suomi-npp', inclination: 98.8, motion: 14.20 },
   ];
   await page.route('**/api/v1/satellites**', (route) => route.fulfill({ json: {
     ...snapshot, source: 'celestrak', status: 'available',
@@ -329,8 +329,8 @@ test('Live Beta loads NASA models for the matching catalog entries on demand', a
   });
   await page.goto('/');
   await page.getByRole('button', { name: /Live Beta/ }).click();
-  for (const [index, { name, model }] of spacecraft.entries()) {
-    await page.getByRole('combobox').fill(name);
+  for (const [index, { name, search, model }] of spacecraft.entries()) {
+    await page.getByRole('combobox').fill(search);
     const option = page.getByRole('option').filter({ has: page.getByText(name, { exact: true }) });
     await expect(option).toBeVisible();
     expect(requests).toHaveLength(index);

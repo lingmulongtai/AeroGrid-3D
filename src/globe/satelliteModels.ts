@@ -1,16 +1,15 @@
 import { Mesh, MeshStandardMaterial, Texture, type Group } from 'three';
-import aquaUrl from './assets/aqua.glb?url';
-import issUrl from './assets/iss.glb?url';
-import suomiUrl from './assets/suomi-npp.glb?url';
+import { spacecraftModels } from '../../shared/spacecraftModels';
 
-const iss = { url: issUrl, spanMeters: 109 };
-
-export const satelliteModels = new Map([
-  ['iss', iss],
-  ['norad-25544', iss],
-  ['norad-27424', { url: aquaUrl, spanMeters: 16.7 }],
-  ['norad-37849', { url: suomiUrl, spanMeters: 9 }],
-]);
+const modelUrls = import.meta.glob<string>('./assets/*.glb', { query: '?url', import: 'default', eager: true });
+export const satelliteModels = new Map<string, { url: string; spanMeters?: number }>();
+for (const { slug, noradIds, spanMeters } of spacecraftModels) {
+  const url = modelUrls[`./assets/${slug}.glb`];
+  if (!url) continue;
+  const model = { url, spanMeters };
+  for (const id of noradIds) satelliteModels.set(`norad-${id}`, model);
+  if (slug === 'iss') satelliteModels.set('iss', model);
+}
 
 export async function loadSatelliteModel(url: string): Promise<Group> {
   const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');

@@ -51,4 +51,16 @@ describe('satellite delivery selection', () => {
     ];
     expect(selectSatelliteCatalog(input, FIXTURE_EPOCH).map((element) => element.NORAD_CAT_ID).sort()).toEqual([1, 2]);
   });
+
+  it('includes available spacecraft with detailed models after the stations at every quality level', () => {
+    const input = mixedCatalog();
+    input.push(
+      { ...input.at(-1)!, NORAD_CAT_ID: 27424, OBJECT_NAME: 'AQUA' },
+      { ...input.at(-1)!, NORAD_CAT_ID: 37849, OBJECT_NAME: 'SUOMI NPP' },
+    );
+    const selected = selectSatelliteCatalog(input, FIXTURE_EPOCH);
+    expect(selected.slice(0, 2).map(({ NORAD_CAT_ID }) => NORAD_CAT_ID)).toEqual([25544, 48274]);
+    expect(selected.slice(2, 4).map(({ NORAD_CAT_ID }) => NORAD_CAT_ID).sort()).toEqual([27424, 37849]);
+    expect(selectSatelliteCatalog([...input].reverse(), FIXTURE_EPOCH)).toEqual(selected);
+  });
 });
