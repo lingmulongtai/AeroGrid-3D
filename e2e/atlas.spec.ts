@@ -280,9 +280,17 @@ test('Demo stays separate and supports the primary exploration flow', async ({ p
   await expect(page.locator('.map-surface')).toHaveAttribute('data-tracking', 'none');
 
   await page.getByRole('combobox').fill('ISS');
+  const modelResponse = page.waitForResponse((response) => /\/iss(?:-[\w-]+)?\.glb$/.test(new URL(response.url()).pathname));
   await page.getByRole('option', { name: /ISS/ }).first().click();
   await expect(page.getByRole('complementary', { name: 'ISS' })).toContainText('Simulated orbit');
   await expect(page.locator('.map-surface')).toHaveAttribute('data-tracking', 'satellite');
+  expect((await modelResponse).ok()).toBe(true);
+  const selectedModel = () => page.evaluate(() => (window as any).__globe.satellites.detail.children[0]?.children[0]?.name ?? null);
+  await expect.poll(selectedModel, { timeout: 15_000 }).toBe('iss');
+  await page.getByRole('combobox').fill('Tiangong');
+  await page.getByRole('option', { name: /Tiangong/ }).first().click();
+  await expect(page.getByRole('complementary', { name: 'Tiangong' })).toContainText('Simulated orbit');
+  await expect.poll(selectedModel).toBeNull();
 
   await expectHealthyPage(page);
   expect(pageErrors).toEqual([]);
