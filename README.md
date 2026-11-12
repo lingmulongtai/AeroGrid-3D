@@ -15,7 +15,7 @@ The public beta is designed for non-commercial, low-cost operation without an SL
 - Accurate sky: the Sun and Moon are positioned with astronomy-engine, and 8,900 real stars from the HYG catalogue plus a procedural Milky Way rotate with sidereal time.
 - Map styles: Sentinel-2 cloudless + Esri satellite imagery, an OpenGridWorks-style dark map with navy oceans, and NASA Black Marble night lights.
 - Faceted 3D models for airliners, heavies, light aircraft, helicopters, satellites, Starlink-class craft, and space stations; fast objects leave short light trails.
-- Selecting the ISS loads a [NASA 3D model](src/globe/assets/CREDITS.md) in both modes. Live Beta also uses NASA models for Aqua and Suomi NPP when they are in the loaded catalog. The atlas uses its lightweight markers for the rest of the constellation and while a detailed model loads.
+- Selecting a supported spacecraft loads its [NASA 3D model](src/globe/assets/CREDITS.md). ISS is also available in Global Demo. Live Beta matches models by NORAD number and uses lightweight markers for the wider constellation.
 - Weather is rendered as lit cloud and rain particles: simulated cyclones, fronts and thunderstorms in Demo, RainViewer radar converted to particles in Live Beta.
 - 1,150 major and 2,094 regional airports (OurAirports) with zoom-dependent markers and labels.
 - Google Earth style navigation: drag to pan, wheel to zoom towards the cursor, Ctrl / Shift / right-drag to tilt, Alt-drag to rotate, double-click to fly in, compass to restore north. The overview mini globe shows where you are looking.
