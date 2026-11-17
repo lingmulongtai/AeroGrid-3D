@@ -14,12 +14,22 @@ export async function connectSources(preferences: ConnectionPreferences) {
   const response = await fetch('/api/v1/connections', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(preferences) });
   if (!response.ok) throw new Error((await response.json().catch(() => null))?.message ?? 'Connection failed');
   const session = await response.json() as ConnectionSession;
-  await disconnectSources();
-  writeStored(SESSION_KEY, JSON.stringify(session), 'session');
+  const previous = readConnection();
+  // Commit locally before retiring the working connection. Failed storage must
+  // not turn a server-side session into a false success or destroy the old one.
+  if (!writeStored(SESSION_KEY, JSON.stringify(session), 'session')) {
+    await revokeSession(session.token);
+    throw new Error('Browser storage is unavailable');
+  }
+  if (previous && previous.token !== session.token) await revokeSession(previous.token);
   return session;
 }
 export async function disconnectSources() {
   const headers = connectionHeaders();
   removeStored(SESSION_KEY, 'session');
   if ('Authorization' in headers) await fetch('/api/v1/connections', { method: 'DELETE', headers }).catch(() => undefined);
+}
+
+async function revokeSession(token: string): Promise<void> {
+  await fetch('/api/v1/connections', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).catch(() => undefined);
 }
